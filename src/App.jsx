@@ -2,20 +2,8 @@ import React, { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import './App.css'
 
-// Начальные данные
-const initialData = [
-  { id: 1, name: 'Зефирки черные', category: 'Зефирки', quantity: 2, color: '#000000' },
-  { id: 2, name: 'Зефирки серые', category: 'Зефирки', quantity: 15, color: '#808080' },
-  { id: 3, name: 'Зефирки бордовые', category: 'Зефирки', quantity: 3, color: '#530908' },
-  { id: 4, name: 'М.зефирки черные', category: 'М.зефирки', quantity: 10, color: '#000000' },
-  { id: 5, name: 'М.зефирки серые', category: 'М.зефирки', quantity: 25, color: '#808080' },
-  { id: 6, name: 'Круасаны', category: 'Круасаны', quantity: 5, color: '#cccccc' },
-  { id: 7, name: 'Круасаны серые', category: 'Круасаны', quantity: 8, color: '#808080' },
-  { id: 8, name: 'М.Круасаны черные', category: 'М.Круасаны', quantity: 7, color: '#000000' },
-]
-
-function App() {
-  const [items, setItems] = useState(initialData)
+function App({ user, supabase }) {
+  const [items, setItems] = useState([])
   const [emptyCategories, setEmptyCategories] = useState([])
   const [activeCategory, setActiveCategory] = useState('Все')
   const [searchQuery, setSearchQuery] = useState('')
@@ -73,19 +61,39 @@ function App() {
     document.body.className = isDarkTheme ? 'dark-theme' : 'light-theme'
   }, [isDarkTheme])
 
-  // Загрузка из localStorage
+  // Загрузка данных из Supabase
   useEffect(() => {
-    const saved = localStorage.getItem('sumki-items')
-    if (saved) {
-      setItems(JSON.parse(saved))
+    if (!supabase || !user) return
+    
+    const loadData = async () => {
+      try {
+        // Загружаем товары
+        const { data: itemsData, error: itemsError } = await supabase
+          .from('items')
+          .select('*')
+          .order('id', { ascending: true })
+        
+        if (itemsError) throw itemsError
+        if (itemsData) setItems(itemsData)
+        
+        // Загружаем пустые категории
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('empty_categories')
+          .select('name')
+        
+        if (categoriesError) throw categoriesError
+        if (categoriesData) {
+          setEmptyCategories(categoriesData.map(c => c.name))
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки данных:', error)
+      }
     }
-    const savedEmptyCategories = localStorage.getItem('sumki-empty-categories')
-    if (savedEmptyCategories) {
-      setEmptyCategories(JSON.parse(savedEmptyCategories))
-    }
-  }, [])
+    
+    loadData()
+  }, [supabase, user])
 
-  // Сохранение в localStorage
+  // Данные сохраняются в localStorage для быстрого доступа
   useEffect(() => {
     localStorage.setItem('sumki-items', JSON.stringify(items))
   }, [items])
