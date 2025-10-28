@@ -25,6 +25,7 @@ function App() {
   const [deletingId, setDeletingId] = useState(null)
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [newItemCategory, setNewItemCategory] = useState('')
+  const [showTextViewModal, setShowTextViewModal] = useState(false)
   const [showCategorySuggestions, setShowCategorySuggestions] = useState(false)
   const [suggestedCategories, setSuggestedCategories] = useState([])
   const [suggestionPosition, setSuggestionPosition] = useState({ top: 0, left: 0 })
@@ -130,6 +131,46 @@ function App() {
       }
       reader.readAsText(file)
     }
+  }
+
+  // Форматирование базы данных в текстовый формат
+  const formatDataAsText = () => {
+    let text = 'БАЗА ДАННЫХ ТОВАРОВ\n'
+    text += '=' + '='.repeat(50) + '\n'
+    text += `Дата: ${new Date().toLocaleString('ru-RU')}\n`
+    text += `Всего товаров: ${items.length}\n\n`
+
+    const categories = ['Все', ...new Set([...items.map(item => item.category), ...emptyCategories].filter(Boolean))]
+    
+    categories.forEach(category => {
+      if (category === 'Все') return
+      
+      const categoryItems = items.filter(item => item.category === category)
+      if (categoryItems.length > 0 || emptyCategories.includes(category)) {
+        text += `\n${'─'.repeat(50)}\n`
+        text += `КАТЕГОРИЯ: ${category}\n`
+        text += `${'─'.repeat(50)}\n`
+        
+        if (categoryItems.length > 0) {
+          categoryItems.forEach((item, index) => {
+            const status = item.quantity === 0 ? ' ⚠️ ОСТАЛОСЬ: 0' : 
+                          item.quantity < 10 ? ' ⚠️ МАЛО' : ' ✓'
+            text += `${index + 1}. ${item.name}\n`
+            text += `   Остаток: ${item.quantity} шт${status}\n`
+            text += `   Цвет: ${item.color}\n`
+            text += '\n'
+          })
+        } else {
+          text += '(нет товаров)\n'
+        }
+      }
+    })
+
+    if (items.length === 0) {
+      text += '\n(База данных пуста)\n'
+    }
+
+    return text
   }
 
   // Получить уникальные категории
@@ -747,6 +788,20 @@ function App() {
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
         </label>
+
+        <button 
+          className="theme-toggle"
+          onClick={() => setShowTextViewModal(true)}
+          title="Просмотр в текстовом виде"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </button>
       </div>
 
       {/* Модальное окно выбора модели для нового товара */}
@@ -777,6 +832,62 @@ function App() {
         </div>
       )}
 
+      {/* Модальное окно текстового просмотра базы данных */}
+      {showTextViewModal && (
+        <div className="modal-overlay" onClick={() => setShowTextViewModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3>Просмотр базы данных</h3>
+              <button 
+                style={{ border: 'none', background: 'transparent', color: isDarkTheme ? '#ffffff' : '#000000', cursor: 'pointer', fontSize: '24px', padding: '0 10px' }}
+                onClick={() => setShowTextViewModal(false)}
+              >
+                ×
+              </button>
+            </div>
+            <textarea 
+              readOnly
+              value={formatDataAsText()}
+              style={{
+                flex: 1,
+                width: '100%',
+                minHeight: '400px',
+                padding: '12px',
+                fontFamily: 'monospace',
+                fontSize: '13px',
+                backgroundColor: isDarkTheme ? '#1a1a1a' : '#ffffff',
+                color: isDarkTheme ? '#ffffff' : '#000000',
+                border: isDarkTheme ? '1px solid #404040' : '1px solid #e5e5e5',
+                borderRadius: '8px',
+                resize: 'vertical',
+                outline: 'none'
+              }}
+            />
+            <div className="modal-actions" style={{ marginTop: '16px' }}>
+              <button 
+                className="modal-confirm-btn" 
+                onClick={() => {
+                  const text = formatDataAsText()
+                  const blob = new Blob([text], { type: 'text/plain' })
+                  const url = URL.createObjectURL(blob)
+                  const a = document.createElement('a')
+                  a.href = url
+                  a.download = `sumki-database-${new Date().toISOString().split('T')[0]}.txt`
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                  URL.revokeObjectURL(url)
+                }}
+              >
+                Скачать как TXT
+              </button>
+              <button className="modal-cancel-btn" onClick={() => setShowTextViewModal(false)}>
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Подсказки категорий через портал - для поиска и редактирования */}
       {(() => {
