@@ -1,0 +1,831 @@
+.app {
+  width: 100%;
+  max-width: 430px;
+  margin: 0 auto;
+  background-color: #000000;
+  padding: 0;
+  font-family: 'DM Mono', monospace;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Адаптивность для больших экранов */
+@media (min-width: 431px) {
+  .app {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Поиск и кнопка + */
+.search-container {
+  display: flex;
+  gap: 9px;
+  padding: 21px 6px 0 6px;
+  margin-bottom: 20px;
+}
+
+.search-box {
+  flex: 1;
+  height: 37px;
+  background-color: #1a1a1a;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+}
+
+.search-input {
+  width: 100%;
+  background: none;
+  border: none;
+  color: #968686;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: #968686;
+}
+
+.add-button {
+  width: 36px;
+  height: 37px;
+  background-color: #1a1a1a;
+  border: none;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.add-button svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* Заголовок */
+.header-title {
+  font-size: 18px;
+  font-weight: 400;
+  text-align: center;
+  margin-bottom: 12px;
+  line-height: 23.44px;
+}
+
+/* Табы категорий */
+.category-tabs {
+  display: flex;
+  gap: 9px;
+  padding: 0 6px;
+  margin-bottom: 12px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.category-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  height: 40px;
+  background-color: #1a1a1a;
+  border: none;
+  border-radius: 10000px;
+  padding: 0 12px;
+  color: #ffffff;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab.active {
+  color: #008df9;
+  background-color: #1a1a1a;
+}
+
+/* Список товаров */
+.items-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 6px 200px;
+  overflow: visible;
+}
+
+.item-card-wrapper {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.item-card-wrapper.deleting {
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.item-card {
+  height: 36px;
+  background-color: #1a1a1a;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding: 0 12px;
+  z-index: 2;
+  overflow: visible;
+}
+
+.item-card.deleting {
+  opacity: 0;
+  transform: translateX(-100%) scale(0.9);
+  height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+/* Индикатор удаления */
+.delete-indicator {
+  position: absolute;
+  right: 6px;
+  top: 0;
+  bottom: 0;
+  background-color: #ff0000;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  opacity: 0;
+  transform: translateX(100%);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1;
+}
+
+.delete-indicator.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.delete-text {
+  color: white;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* Индикатор цвета */
+.color-indicator {
+  width: 6px;
+  height: 31px;
+  border-radius: 10000px;
+  margin-right: 12px;
+  flex-shrink: 0;
+  border: none;
+}
+
+/* Название товара */
+.item-name {
+  flex: 1;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 16.93px;
+  overflow: visible;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin-left: -8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+.item-name:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.edit-input-name {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid #ffffff;
+  border-radius: 4px;
+  color: #ffffff;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+/* Количество */
+.item-quantity {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 16.93px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.item-quantity:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.item-quantity .low-stock {
+  color: #ff0000;
+}
+
+.edit-input-quantity {
+  width: 60px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid #ffffff;
+  border-radius: 4px;
+  color: #ffffff;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  padding: 4px 8px;
+  outline: none;
+  text-align: center;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  color: #968686;
+  padding: 40px 20px;
+  font-size: 13px;
+}
+
+/* Палитра цветов */
+.color-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.color-picker-panel {
+  background: #2a2a2a;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #404040;
+  max-width: 340px;
+  width: 100%;
+}
+
+.color-preview-header {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.color-preview-box {
+  width: 60px;
+  height: 60px;
+  border-radius: 10px;
+  border: 2px solid #404040;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Квадрат насыщенности/яркости */
+.color-square {
+  width: 100%;
+  height: 200px;
+  border-radius: 8px;
+  position: relative;
+  cursor: crosshair;
+  margin-bottom: 12px;
+}
+
+.color-selector {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 2px solid white;
+  border-radius: 50%;
+  transform: translate(-50%, 50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+/* Слайдеры */
+.slider-container {
+  margin-bottom: 12px;
+}
+
+.hue-slider {
+  width: 100%;
+  height: 24px;
+  border-radius: 4px;
+  background: linear-gradient(to right,
+    #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%,
+    #0000ff 67%, #ff00ff 83%, #ff0000 100%);
+  position: relative;
+  cursor: pointer;
+}
+
+.alpha-slider {
+  width: 100%;
+  height: 24px;
+  border-radius: 4px;
+  position: relative;
+  cursor: pointer;
+}
+
+.slider-indicator {
+  position: absolute;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  background: white;
+  border-radius: 2px;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+  transform: translateX(-50%);
+}
+
+/* Поля ввода */
+.color-inputs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.input-group {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.input-group label {
+  font-size: 11px;
+  color: #a0a0a0;
+  font-family: 'DM Mono', monospace;
+}
+
+.input-group input {
+  width: 100%;
+  background: #1a1a1a;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: white;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
+
+.input-group span {
+  font-size: 11px;
+  color: #a0a0a0;
+  font-family: 'DM Mono', monospace;
+}
+
+/* Предустановленные цвета */
+.predefined-colors {
+  margin-bottom: 12px;
+}
+
+.predefined-title {
+  font-size: 11px;
+  color: #a0a0a0;
+  font-family: 'DM Mono', monospace;
+  margin-bottom: 8px;
+}
+
+.color-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+
+.color-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid #404040;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.color-swatch:hover {
+  transform: scale(1.1);
+}
+
+/* Кнопки */
+.color-picker-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.apply-color-btn,
+.cancel-color-btn {
+  flex: 1;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.apply-color-btn {
+  background-color: #008df9;
+  color: #ffffff;
+}
+
+.apply-color-btn:hover {
+  background-color: #0070c9;
+}
+
+.cancel-color-btn {
+  background-color: #1a1a1a;
+  color: #ffffff;
+}
+
+.cancel-color-btn:hover {
+  background-color: #2a2a2a;
+}
+
+/* Кнопка переключения темы */
+.theme-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background-color: #1a1a1a;
+  color: #ffffff;
+  font-size: 28px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-toggle:hover {
+  background-color: #2a2a2a;
+  transform: scale(1.1);
+}
+
+/* Светлая тема */
+.light-theme .app {
+  background-color: #f5f5f7;
+  color: #000000;
+}
+
+@media (min-width: 431px) {
+  .light-theme .app {
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  }
+}
+
+.light-theme .search-box,
+.light-theme .add-button,
+.light-theme .tab,
+.light-theme .item-card {
+  background-color: #ffffff;
+  border: 1px solid #e5e5e5;
+}
+
+.light-theme .search-input,
+.light-theme .header-title,
+.light-theme .item-name,
+.light-theme .item-quantity,
+.light-theme .tab {
+  color: #000000;
+}
+
+.light-theme .search-input::placeholder {
+  color: #968686;
+}
+
+.light-theme .tab.active {
+  color: #008df9;
+}
+
+.light-theme .item-name:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.light-theme .item-quantity:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.light-theme .edit-input-name,
+.light-theme .edit-input-quantity {
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid #000000;
+  color: #000000;
+}
+
+.light-theme .theme-toggle {
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #e5e5e5;
+}
+
+.light-theme .theme-toggle:hover {
+  background-color: #f0f0f0;
+}
+
+.light-theme .empty-state {
+  color: #666666;
+}
+
+.light-theme .color-picker-panel {
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+}
+
+.light-theme .add-button svg line {
+  stroke: #000000;
+}
+
+.light-theme .item-quantity .low-stock {
+  color: #ff0000;
+}
+
+.light-theme .theme-toggle {
+  background-color: #ffffff;
+  color: #000000;
+  border: 1px solid #e5e5e5;
+}
+
+.light-theme .theme-toggle:hover {
+  background-color: #f0f0f0;
+}
+
+.light-theme .empty-state {
+  color: #666666;
+}
+
+
+/* Кнопка добавления новой модели */
+.add-category-tab {
+  background-color: #333333 !important;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.light-theme .add-category-tab {
+  background-color: #e5e5e5 !important;
+  color: #000000;
+}
+
+/* Модальные окна */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-content {
+  background-color: #1a1a1a;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-content h3 {
+  color: #ffffff;
+  font-family: 'DM Mono', monospace;
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 16px 0;
+}
+
+.modal-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.modal-category-btn {
+  padding: 12px 16px;
+  background-color: #2a2a2a;
+  border: 1px solid #404040;
+  border-radius: 8px;
+  color: #ffffff;
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modal-category-btn:hover {
+  background-color: #333333;
+}
+
+.modal-category-btn.active {
+  background-color: #007AFF;
+  border-color: #007AFF;
+  color: #ffffff;
+}
+
+.modal-input {
+  width: 100%;
+  padding: 12px 16px;
+  background-color: #2a2a2a;
+  border: 1px solid #404040;
+  border-radius: 8px;
+  color: #ffffff;
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 400;
+  margin-bottom: 20px;
+  outline: none;
+}
+
+.modal-input::placeholder {
+  color: #808080;
+}
+
+.modal-input:focus {
+  border-color: #007AFF;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.modal-cancel-btn,
+.modal-confirm-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.modal-cancel-btn {
+  background-color: #2a2a2a;
+  color: #ffffff;
+  border: 1px solid #404040;
+}
+
+.modal-cancel-btn:hover {
+  background-color: #333333;
+}
+
+.modal-confirm-btn {
+  background-color: #007AFF;
+  color: #ffffff;
+}
+
+.modal-confirm-btn:hover {
+  background-color: #0056b3;
+}
+
+.modal-confirm-btn:disabled {
+  background-color: #404040;
+  color: #808080;
+  cursor: not-allowed;
+}
+
+/* Light theme modals */
+.light-theme .modal-content {
+  background-color: #ffffff;
+  border: 1px solid #e5e5e5;
+}
+
+.light-theme .modal-content h3 {
+  color: #000000;
+}
+
+.light-theme .modal-category-btn {
+  background-color: #f5f5f7;
+  border-color: #e5e5e5;
+  color: #000000;
+}
+
+.light-theme .modal-category-btn:hover {
+  background-color: #ffffff;
+}
+
+.light-theme .modal-category-btn.active {
+  background-color: #007AFF;
+  border-color: #007AFF;
+  color: #ffffff;
+}
+
+.light-theme .modal-input {
+  background-color: #f5f5f7;
+  border-color: #e5e5e5;
+  color: #000000;
+}
+
+.light-theme .modal-cancel-btn {
+  background-color: #f5f5f7;
+  border-color: #e5e5e5;
+  color: #000000;
+}
+
+.light-theme .modal-cancel-btn:hover {
+  background-color: #ffffff;
+}
+
+/* Подсказки категорий при вводе */
+.item-name-input-wrapper {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+}
+
+.category-suggestions {
+  position: fixed;
+  background-color: #1a1a1a;
+  border: 1px solid #404040;
+  border-radius: 8px;
+  padding: 8px 0;
+  z-index: 10000 !important;
+  max-height: 250px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  display: flex !important;
+  flex-direction: column;
+  min-height: 50px;
+}
+
+.category-suggestion-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background-color: transparent;
+  border: none;
+  color: #ffffff;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.category-suggestion-item:hover {
+  background-color: #2a2a2a;
+}
+
+.light-theme .category-suggestions {
+  background-color: #ffffff;
+  border-color: #e5e5e5;
+}
+
+.light-theme .category-suggestion-item {
+  color: #000000;
+}
+
+.light-theme .category-suggestion-item:hover {
+  background-color: #f5f5f7;
+}
