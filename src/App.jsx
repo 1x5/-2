@@ -73,7 +73,26 @@ function App() {
     document.body.className = isDarkTheme ? 'dark-theme' : 'light-theme'
   }, [isDarkTheme])
 
-  // Данные хранятся только в состоянии приложения, без localStorage
+  // Загрузка из localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('sumki-items')
+    if (saved) {
+      setItems(JSON.parse(saved))
+    }
+    const savedEmptyCategories = localStorage.getItem('sumki-empty-categories')
+    if (savedEmptyCategories) {
+      setEmptyCategories(JSON.parse(savedEmptyCategories))
+    }
+  }, [])
+
+  // Сохранение в localStorage
+  useEffect(() => {
+    localStorage.setItem('sumki-items', JSON.stringify(items))
+  }, [items])
+  
+  useEffect(() => {
+    localStorage.setItem('sumki-empty-categories', JSON.stringify(emptyCategories))
+  }, [emptyCategories])
 
   // Экспорт данных в JSON файл
   const exportToJSON = () => {
