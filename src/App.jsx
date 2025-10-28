@@ -820,7 +820,18 @@ function App() {
 
         <button 
           className="theme-toggle"
-          onClick={() => setShowTextViewModal(true)}
+          onClick={() => {
+            // Загружаем данные из localStorage при открытии
+            const savedItems = localStorage.getItem('sumki-items')
+            if (savedItems) {
+              setItems(JSON.parse(savedItems))
+            }
+            const savedCategories = localStorage.getItem('sumki-empty-categories')
+            if (savedCategories) {
+              setEmptyCategories(JSON.parse(savedCategories))
+            }
+            setShowTextViewModal(true)
+          }}
           title="Просмотр в текстовом виде"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
