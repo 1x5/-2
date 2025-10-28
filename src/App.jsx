@@ -26,6 +26,8 @@ function App() {
   const [showAddItemModal, setShowAddItemModal] = useState(false)
   const [newItemCategory, setNewItemCategory] = useState('')
   const [showTextViewModal, setShowTextViewModal] = useState(false)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editedText, setEditedText] = useState('')
   const [showCategorySuggestions, setShowCategorySuggestions] = useState(false)
   const [suggestedCategories, setSuggestedCategories] = useState([])
   const [suggestionPosition, setSuggestionPosition] = useState({ top: 0, left: 0 })
@@ -161,6 +163,69 @@ function App() {
     }
 
     return text
+  }
+
+  // Парсинг текста и обновление базы данных
+  const parseTextAndUpdate = (text) => {
+    const lines = text.split('\n')
+    const newItems = []
+    let currentCategory = ''
+    let maxId = Math.max(...items.map(i => i.id), 0)
+
+    lines.forEach(line => {
+      line = line.trim()
+      if (!line) return
+
+      // Проверяем, является ли строка названием категории (заголовок без чисел)
+      const isCategory = !line.match(/\d+/)
+      
+      if (isCategory && line.length > 0) {
+        // Это название категории
+        currentCategory = line
+      } else if (currentCategory && line.length > 0) {
+        // Это товар
+        // Формат: "Товар 5" или "Товар 5 (!)" или "Товар (0)"
+        const parts = line.split(/\s+/)
+        let quantity = 0
+        let itemName = ''
+
+        // Ищем число в строке
+        const quantityMatch = line.match(/(\d+)/)
+        if (quantityMatch) {
+          quantity = parseInt(quantityMatch[1])
+          // Удаляем число и статусы из имени
+          itemName = line.replace(/\s*\d+.*/, '').trim()
+          if (!itemName) {
+            // Если имя пустое, используем часть без числа
+            itemName = line.replace(quantityMatch[0], '').replace(/[(!)]/g, '').trim()
+          }
+        } else {
+          itemName = line.replace(/[(!)]/g, '').trim()
+          if (line.includes('(0)')) {
+            quantity = 0
+          }
+        }
+
+        if (itemName) {
+          maxId++
+          const newItem = {
+            id: maxId,
+            name: itemName,
+            category: currentCategory,
+            quantity: quantity,
+            color: getColorFromName(itemName)
+          }
+          newItems.push(newItem)
+        }
+      }
+    })
+
+    if (newItems.length > 0) {
+      setItems(newItems)
+      alert(`Импортировано ${newItems.length} товаров`)
+    } else {
+      alert('Не удалось импортировать данные. Проверьте формат.')
+    }
   }
 
   // Получить уникальные категории
@@ -824,20 +889,40 @@ function App() {
 
       {/* Модальное окно текстового просмотра базы данных */}
       {showTextViewModal && (
-        <div className="modal-overlay" onClick={() => setShowTextViewModal(false)}>
+        <div className="modal-overlay" onClick={() => {
+          if (!isEditMode) setShowTextViewModal(false)
+        }}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3>Просмотр базы данных</h3>
-              <button 
-                style={{ border: 'none', background: 'transparent', color: isDarkTheme ? '#ffffff' : '#000000', cursor: 'pointer', fontSize: '24px', padding: '0 10px' }}
-                onClick={() => setShowTextViewModal(false)}
-              >
-                ×
-              </button>
+              <h3>{isEditMode ? 'Редактирование базы данных' : 'Просмотр базы данных'}</h3>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {!isEditMode && (
+                  <button 
+                    className="modal-confirm-btn" 
+                    onClick={() => {
+                      setIsEditMode(true)
+                      setEditedText(formatDataAsText())
+                    }}
+                    style={{ padding: '6px 12px', fontSize: '13px' }}
+                  >
+                    Редактировать
+                  </button>
+                )}
+                <button 
+                  style={{ border: 'none', background: 'transparent', color: isDarkTheme ? '#ffffff' : '#000000', cursor: 'pointer', fontSize: '24px', padding: '0 10px' }}
+                  onClick={() => {
+                    setIsEditMode(false)
+                    setShowTextViewModal(false)
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             </div>
             <textarea 
-              readOnly
-              value={formatDataAsText()}
+              readOnly={!isEditMode}
+              value={isEditMode ? editedText : formatDataAsText()}
+              onChange={(e) => isEditMode && setEditedText(e.target.value)}
               style={{
                 flex: 1,
                 width: '100%',
@@ -850,30 +935,57 @@ function App() {
                 border: isDarkTheme ? '1px solid #404040' : '1px solid #e5e5e5',
                 borderRadius: '8px',
                 resize: 'vertical',
-                outline: 'none'
+                outline: 'none',
+                cursor: isEditMode ? 'text' : 'default'
               }}
             />
             <div className="modal-actions" style={{ marginTop: '16px' }}>
-              <button 
-                className="modal-confirm-btn" 
-                onClick={() => {
-                  const text = formatDataAsText()
-                  const blob = new Blob([text], { type: 'text/plain' })
-                  const url = URL.createObjectURL(blob)
-                  const a = document.createElement('a')
-                  a.href = url
-                  a.download = `sumki-database-${new Date().toISOString().split('T')[0]}.txt`
-                  document.body.appendChild(a)
-                  a.click()
-                  document.body.removeChild(a)
-                  URL.revokeObjectURL(url)
-                }}
-              >
-                Скачать как TXT
-              </button>
-              <button className="modal-cancel-btn" onClick={() => setShowTextViewModal(false)}>
-                Закрыть
-              </button>
+              {isEditMode ? (
+                <>
+                  <button 
+                    className="modal-confirm-btn" 
+                    onClick={() => {
+                      parseTextAndUpdate(editedText)
+                      setIsEditMode(false)
+                      setShowTextViewModal(false)
+                    }}
+                  >
+                    Сохранить изменения
+                  </button>
+                  <button 
+                    className="modal-cancel-btn" 
+                    onClick={() => {
+                      setIsEditMode(false)
+                      setEditedText('')
+                    }}
+                  >
+                    Отмена
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button 
+                    className="modal-confirm-btn" 
+                    onClick={() => {
+                      const text = formatDataAsText()
+                      const blob = new Blob([text], { type: 'text/plain' })
+                      const url = URL.createObjectURL(blob)
+                      const a = document.createElement('a')
+                      a.href = url
+                      a.download = `sumki-database-${new Date().toISOString().split('T')[0]}.txt`
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                      URL.revokeObjectURL(url)
+                    }}
+                  >
+                    Скачать как TXT
+                  </button>
+                  <button className="modal-cancel-btn" onClick={() => setShowTextViewModal(false)}>
+                    Закрыть
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
