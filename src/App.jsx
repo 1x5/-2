@@ -91,6 +91,47 @@ function App() {
     localStorage.setItem('sumki-empty-categories', JSON.stringify(emptyCategories))
   }, [emptyCategories])
 
+  // Экспорт данных в JSON файл
+  const exportToJSON = () => {
+    const data = {
+      items,
+      emptyCategories,
+      exportDate: new Date().toISOString()
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `sumki-data-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  // Импорт данных из JSON файла
+  const importFromJSON = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result)
+          if (data.items) {
+            setItems(data.items)
+          }
+          if (data.emptyCategories) {
+            setEmptyCategories(data.emptyCategories)
+          }
+        } catch (error) {
+          console.error('Ошибка при импорте:', error)
+          alert('Ошибка при импорте файла')
+        }
+      }
+      reader.readAsText(file)
+    }
+  }
+
   // Получить уникальные категории
   const categories = ['Все', ...new Set([...items.map(item => item.category), ...emptyCategories].filter(Boolean))]
 
@@ -662,22 +703,51 @@ function App() {
         <div className="empty-state">Нет товаров</div>
       )}
 
-      {/* Кнопка переключения темы */}
-      <button 
-        className="theme-toggle"
-        onClick={() => setIsDarkTheme(!isDarkTheme)}
-      >
-        {isDarkTheme ? (
+      {/* Кнопки управления данными */}
+      <div style={{ position: 'fixed', bottom: '20px', left: '20px', display: 'flex', gap: '10px', zIndex: 1000 }}>
+        <button 
+          className="theme-toggle"
+          onClick={() => setIsDarkTheme(!isDarkTheme)}
+          title="Сменить тему"
+        >
+          {isDarkTheme ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          )}
+        </button>
+        
+        <button 
+          className="theme-toggle"
+          onClick={exportToJSON}
+          title="Экспортировать данные"
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="4"/>
-            <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
-        ) : (
+        </button>
+        
+        <label className="theme-toggle" title="Импортировать данные" style={{ cursor: 'pointer' }}>
+          <input
+            type="file"
+            accept=".json"
+            onChange={importFromJSON}
+            style={{ display: 'none' }}
+          />
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
-        )}
-      </button>
+        </label>
+      </div>
 
       {/* Модальное окно выбора модели для нового товара */}
       {showAddItemModal && (
