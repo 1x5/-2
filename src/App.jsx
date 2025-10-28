@@ -17,7 +17,7 @@ const initialData = [
 function App() {
   const [items, setItems] = useState(initialData)
   const [emptyCategories, setEmptyCategories] = useState([])
-  const [activeCategory, setActiveCategory] = useState('Зефирки')
+  const [activeCategory, setActiveCategory] = useState('Все')
   const [searchQuery, setSearchQuery] = useState('')
   const [editing, setEditing] = useState({ id: null, field: null }) // id и поле (name/quantity)
   const [editingValue, setEditingValue] = useState('')
