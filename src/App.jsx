@@ -943,13 +943,15 @@ function App({ user, supabase }) {
                     setEditedText(formatDataAsText())
                   }}
                   style={{ 
-                    background: 'transparent', 
-                    border: 'none', 
-                    color: isDarkTheme ? '#808080' : '#666666', 
+                    background: isDarkTheme ? '#1a1a1a' : '#ffffff', 
+                    border: `1px solid ${isDarkTheme ? '#404040' : '#e5e5e5'}`, 
+                    color: isDarkTheme ? '#ffffff' : '#000000', 
                     cursor: 'pointer',
-                    fontSize: '12px',
-                    padding: '0',
-                    fontFamily: 'inherit'
+                    fontSize: '13px',
+                    padding: '8px 16px',
+                    fontFamily: 'inherit',
+                    borderRadius: '6px',
+                    fontWeight: '500'
                   }}
                 >
                   Редактировать
@@ -988,13 +990,14 @@ function App({ user, supabase }) {
                 minHeight: '400px',
                 padding: '20px',
                 fontFamily: 'monospace',
-                fontSize: '13px',
-                backgroundColor: 'transparent',
+                fontSize: '14px',
+                backgroundColor: isDarkTheme ? '#0a0a0a' : '#ffffff',
                 color: isDarkTheme ? '#ffffff' : '#000000',
                 border: 'none',
                 resize: 'vertical',
                 outline: 'none',
-                cursor: isEditMode ? 'text' : 'default'
+                cursor: isEditMode ? 'text' : 'default',
+                lineHeight: '1.6'
               }}
             />
             {(isEditMode || formatDataAsText().length > 0) && (
