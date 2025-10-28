@@ -63,10 +63,14 @@ function App({ user, supabase }) {
 
   // Загрузка данных из Supabase
   useEffect(() => {
-    if (!supabase || !user) return
+    if (!supabase || !user) {
+      console.log('Supabase или пользователь не загружены:', { supabase: !!supabase, user: !!user })
+      return
+    }
     
     const loadData = async () => {
       try {
+        console.log('Загрузка данных из PostgreSQL...')
         // Загружаем товары
         const { data: itemsData, error: itemsError } = await supabase
           .from('items')
@@ -74,6 +78,7 @@ function App({ user, supabase }) {
           .order('id', { ascending: true })
         
         if (itemsError) throw itemsError
+        console.log('Загружено товаров:', itemsData?.length || 0)
         if (itemsData) setItems(itemsData)
         
         // Загружаем пустые категории
@@ -82,11 +87,14 @@ function App({ user, supabase }) {
           .select('name')
         
         if (categoriesError) throw categoriesError
+        console.log('Загружено категорий:', categoriesData?.length || 0)
         if (categoriesData) {
           setEmptyCategories(categoriesData.map(c => c.name))
         }
+        
+        console.log('✅ Данные успешно загружены из PostgreSQL')
       } catch (error) {
-        console.error('Ошибка загрузки данных:', error)
+        console.error('❌ Ошибка загрузки данных:', error)
       }
     }
     
