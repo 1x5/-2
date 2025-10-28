@@ -5,7 +5,6 @@ import './Auth.css'
 function AuthSupabase({ setUser, user }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [isSignUp, setIsSignUp] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -15,22 +14,13 @@ function AuthSupabase({ setUser, user }) {
     setLoading(true)
 
     try {
-      if (isSignUp) {
-        // Регистрация
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-        })
-        if (error) throw error
-      } else {
-        // Вход
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        })
-        if (error) throw error
-        setUser(data.user)
-      }
+      // Только вход - регистрация отключена
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      if (error) throw error
+      setUser(data.user)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -60,7 +50,7 @@ function AuthSupabase({ setUser, user }) {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>{isSignUp ? 'Регистрация' : 'Вход'}</h2>
+        <h2>Вход</h2>
         
         <form onSubmit={handleAuth}>
           <input
@@ -88,16 +78,9 @@ function AuthSupabase({ setUser, user }) {
             className="auth-button" 
             disabled={loading}
           >
-            {loading ? 'Загрузка...' : (isSignUp ? 'Зарегистрироваться' : 'Войти')}
+            {loading ? 'Загрузка...' : 'Войти'}
           </button>
         </form>
-
-        <button 
-          className="auth-toggle"
-          onClick={() => setIsSignUp(!isSignUp)}
-        >
-          {isSignUp ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
-        </button>
       </div>
     </div>
   )
