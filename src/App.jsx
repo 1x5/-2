@@ -93,7 +93,59 @@ function App({ user, supabase }) {
     loadData()
   }, [supabase, user])
 
-  // Данные сохраняются в localStorage для быстрого доступа
+  // Синхронизация данных с Supabase (PostgreSQL)
+  useEffect(() => {
+    if (!supabase || !user || items.length === 0) return
+    
+    const syncToSupabase = async () => {
+      try {
+        // Удаляем старые данные пользователя
+        await supabase.from('items').delete().eq('user_id', user.id)
+        
+        // Сохраняем новые данные
+        const itemsToSave = items.map(item => ({
+          name: item.name,
+          category: item.category,
+          quantity: item.quantity,
+          color: item.color,
+          user_id: user.id
+        }))
+        
+        await supabase.from('items').insert(itemsToSave)
+        console.log('Данные синхронизированы с PostgreSQL')
+      } catch (error) {
+        console.error('Ошибка синхронизации с PostgreSQL:', error)
+      }
+    }
+    
+    // Дебаунс - синхронизируем через 1 секунду после последнего изменения
+    const timeoutId = setTimeout(syncToSupabase, 1000)
+    return () => clearTimeout(timeoutId)
+  }, [items, supabase, user])
+  
+  useEffect(() => {
+    if (!supabase || !user || emptyCategories.length === 0) return
+    
+    const syncToSupabase = async () => {
+      try {
+        await supabase.from('empty_categories').delete().eq('user_id', user.id)
+        
+        const categoriesToSave = emptyCategories.map(name => ({
+          name,
+          user_id: user.id
+        }))
+        
+        await supabase.from('empty_categories').insert(categoriesToSave)
+      } catch (error) {
+        console.error('Ошибка синхронизации категорий:', error)
+      }
+    }
+    
+    const timeoutId = setTimeout(syncToSupabase, 1000)
+    return () => clearTimeout(timeoutId)
+  }, [emptyCategories, supabase, user])
+
+  // Также сохраняем в localStorage для кэширования
   useEffect(() => {
     localStorage.setItem('sumki-items', JSON.stringify(items))
   }, [items])
