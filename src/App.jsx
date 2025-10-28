@@ -866,32 +866,49 @@ function App() {
         <div className="modal-overlay" onClick={() => {
           if (!isEditMode) setShowTextViewModal(false)
         }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3>{isEditMode ? 'Редактирование базы данных' : 'Просмотр базы данных'}</h3>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                {!isEditMode && (
-                  <button 
-                    className="modal-confirm-btn" 
-                    onClick={() => {
-                      setIsEditMode(true)
-                      setEditedText(formatDataAsText())
-                    }}
-                    style={{ padding: '6px 12px', fontSize: '13px' }}
-                  >
-                    Редактировать
-                  </button>
-                )}
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', padding: '0', backgroundColor: isDarkTheme ? '#000000' : '#f5f5f7' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: isDarkTheme ? '1px solid #1a1a1a' : '1px solid #e5e5e5' }}>
+              {!isEditMode && (
                 <button 
-                  style={{ border: 'none', background: 'transparent', color: isDarkTheme ? '#ffffff' : '#000000', cursor: 'pointer', fontSize: '24px', padding: '0 10px' }}
                   onClick={() => {
-                    setIsEditMode(false)
-                    setShowTextViewModal(false)
+                    setIsEditMode(true)
+                    setEditedText(formatDataAsText())
+                  }}
+                  style={{ 
+                    background: 'transparent', 
+                    border: 'none', 
+                    color: isDarkTheme ? '#808080' : '#666666', 
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    padding: '0',
+                    fontFamily: 'inherit'
                   }}
                 >
-                  ×
+                  Редактировать
                 </button>
-              </div>
+              )}
+              <button 
+                style={{ 
+                  border: 'none', 
+                  background: 'transparent', 
+                  color: isDarkTheme ? '#808080' : '#666666', 
+                  cursor: 'pointer', 
+                  fontSize: '18px',
+                  padding: '0',
+                  marginLeft: 'auto',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onClick={() => {
+                  setIsEditMode(false)
+                  setShowTextViewModal(false)
+                }}
+              >
+                ×
+              </button>
             </div>
             <textarea 
               readOnly={!isEditMode}
@@ -901,45 +918,58 @@ function App() {
                 flex: 1,
                 width: '100%',
                 minHeight: '400px',
-                padding: '12px',
+                padding: '20px',
                 fontFamily: 'monospace',
                 fontSize: '13px',
-                backgroundColor: isDarkTheme ? '#1a1a1a' : '#ffffff',
+                backgroundColor: 'transparent',
                 color: isDarkTheme ? '#ffffff' : '#000000',
-                border: isDarkTheme ? '1px solid #404040' : '1px solid #e5e5e5',
-                borderRadius: '8px',
+                border: 'none',
                 resize: 'vertical',
                 outline: 'none',
                 cursor: isEditMode ? 'text' : 'default'
               }}
             />
-            <div className="modal-actions" style={{ marginTop: '16px' }}>
-              {isEditMode ? (
-                <>
+            {(isEditMode || formatDataAsText().length > 0) && (
+              <div style={{ padding: '16px 20px', borderTop: isDarkTheme ? '1px solid #1a1a1a' : '1px solid #e5e5e5', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                {isEditMode ? (
+                  <>
+                    <button 
+                      onClick={() => {
+                        setIsEditMode(false)
+                        setEditedText('')
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: isDarkTheme ? '#808080' : '#666666',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        padding: '8px 16px'
+                      }}
+                    >
+                      Отмена
+                    </button>
+                    <button 
+                      onClick={() => {
+                        parseTextAndUpdate(editedText)
+                        setIsEditMode(false)
+                        setShowTextViewModal(false)
+                      }}
+                      style={{
+                        background: isDarkTheme ? '#1a1a1a' : '#000000',
+                        border: 'none',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        padding: '8px 16px',
+                        borderRadius: '6px'
+                      }}
+                    >
+                      Сохранить
+                    </button>
+                  </>
+                ) : (
                   <button 
-                    className="modal-confirm-btn" 
-                    onClick={() => {
-                      parseTextAndUpdate(editedText)
-                      setIsEditMode(false)
-                      setShowTextViewModal(false)
-                    }}
-                  >
-                    Сохранить изменения
-                  </button>
-                  <button 
-                    className="modal-cancel-btn" 
-                    onClick={() => {
-                      setIsEditMode(false)
-                      setEditedText('')
-                    }}
-                  >
-                    Отмена
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button 
-                    className="modal-confirm-btn" 
                     onClick={() => {
                       const text = formatDataAsText()
                       const blob = new Blob([text], { type: 'text/plain' })
@@ -952,15 +982,21 @@ function App() {
                       document.body.removeChild(a)
                       URL.revokeObjectURL(url)
                     }}
+                    style={{
+                      background: isDarkTheme ? '#1a1a1a' : '#000000',
+                      border: 'none',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      padding: '8px 16px',
+                      borderRadius: '6px'
+                    }}
                   >
-                    Скачать как TXT
+                    Скачать TXT
                   </button>
-                  <button className="modal-cancel-btn" onClick={() => setShowTextViewModal(false)}>
-                    Закрыть
-                  </button>
-                </>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
