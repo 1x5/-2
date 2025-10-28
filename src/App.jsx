@@ -135,11 +135,7 @@ function App() {
 
   // Форматирование базы данных в текстовый формат
   const formatDataAsText = () => {
-    let text = 'БАЗА ДАННЫХ ТОВАРОВ\n'
-    text += '=' + '='.repeat(50) + '\n'
-    text += `Дата: ${new Date().toLocaleString('ru-RU')}\n`
-    text += `Всего товаров: ${items.length}\n\n`
-
+    let text = ''
     const categories = ['Все', ...new Set([...items.map(item => item.category), ...emptyCategories].filter(Boolean))]
     
     categories.forEach(category => {
@@ -147,27 +143,21 @@ function App() {
       
       const categoryItems = items.filter(item => item.category === category)
       if (categoryItems.length > 0 || emptyCategories.includes(category)) {
-        text += `\n${'─'.repeat(50)}\n`
-        text += `КАТЕГОРИЯ: ${category}\n`
-        text += `${'─'.repeat(50)}\n`
+        text += `${category}\n`
         
         if (categoryItems.length > 0) {
-          categoryItems.forEach((item, index) => {
-            const status = item.quantity === 0 ? ' ⚠️ ОСТАЛОСЬ: 0' : 
-                          item.quantity < 10 ? ' ⚠️ МАЛО' : ' ✓'
-            text += `${index + 1}. ${item.name}\n`
-            text += `   Остаток: ${item.quantity} шт${status}\n`
-            text += `   Цвет: ${item.color}\n`
-            text += '\n'
+          categoryItems.forEach((item) => {
+            const status = item.quantity === 0 ? ' (0)' : 
+                          item.quantity < 10 ? ' (!)' : ''
+            text += `${item.name} ${item.quantity}${status}\n`
           })
-        } else {
-          text += '(нет товаров)\n'
         }
+        text += '\n'
       }
     })
 
     if (items.length === 0) {
-      text += '\n(База данных пуста)\n'
+      text += '(база пуста)\n'
     }
 
     return text
