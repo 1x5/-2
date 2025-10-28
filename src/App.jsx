@@ -868,7 +868,7 @@ function App({ user, supabase }) {
       )}
 
       {/* Кнопки управления данными */}
-      <div style={{ position: 'fixed', bottom: '20px', left: '20px', display: 'flex', gap: '10px', zIndex: 1000 }}>
+      <div style={{ position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '10px', zIndex: 1000, maxWidth: '430px' }}>
         <button 
           className="theme-toggle"
           onClick={() => setIsDarkTheme(!isDarkTheme)}
