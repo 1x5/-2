@@ -74,7 +74,7 @@ jobs:
             echo "ℹ️ Нет изменений для коммита"
           else
             git commit -m "Auto backup: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-            git push
+            git push origin HEAD:main
             echo "✅ Бэкап закоммичен и отправлен"
           fi
 
