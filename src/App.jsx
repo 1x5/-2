@@ -23,6 +23,11 @@ function App({ user, supabase }) {
     const saved = localStorage.getItem('sumki-theme')
     return saved ? saved === 'dark' : true
   })
+  const [actionLogs, setActionLogs] = useState(() => {
+    const saved = localStorage.getItem('sumki-action-logs')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [showAllLogs, setShowAllLogs] = useState(false)
   const suppressNextBlurSaveRef = useRef(false)
   const inputRef = useRef(null)
   const isInitialLoadRef = useRef(true)
@@ -30,6 +35,43 @@ function App({ user, supabase }) {
   const syncInProgressRef = useRef(false)
   const lastSyncItemsRef = useRef(null)
   const syncRetryCountRef = useRef(0) // Счетчик повторных попыток
+
+  // Функция добавления лога действия
+  const addActionLog = (action, itemName = null, categoryName = null, quantityChange = null) => {
+    const now = new Date()
+    const timeStr = now.toLocaleString('ru-RU', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+    
+    let message = ''
+    if (action === 'quantity_change') {
+      const sign = quantityChange >= 0 ? '+' : ''
+      message = `${itemName} ${sign}${quantityChange}`
+    } else if (action === 'item_deleted') {
+      message = `Удаление товара ${itemName}`
+    } else if (action === 'category_deleted') {
+      message = `Удаление категории ${categoryName}`
+    }
+    
+    const newLog = {
+      id: Date.now(),
+      action,
+      message,
+      time: timeStr,
+      timestamp: now.getTime()
+    }
+    
+    setActionLogs(prevLogs => {
+      const updated = [newLog, ...prevLogs].slice(0, 20) // Храним максимум 20
+      localStorage.setItem('sumki-action-logs', JSON.stringify(updated))
+      return updated
+    })
+  }
 
   // Функция определения цвета по названию
   const getColorFromName = (name) => {
@@ -662,6 +704,10 @@ function App({ user, supabase }) {
     // Если свайп более -80px - удаляем
     if (offset < -80) {
       setDeletingId(id)
+      const itemToDelete = items.find(item => item.id === id)
+      if (itemToDelete) {
+        addActionLog('item_deleted', itemToDelete.name)
+      }
       // Удаляем сразу из состояния, анимация делается через CSS
       setTimeout(() => {
         // Удаляем товар по id (работает и с отрицательными ID для новых товаров)
@@ -697,6 +743,13 @@ function App({ user, supabase }) {
     if (field === 'quantity') {
       const num = parseInt(value)
       if (!isNaN(num) && num >= 0) {
+        const oldItem = items.find(item => item.id === id)
+        if (oldItem) {
+          const quantityChange = num - oldItem.quantity
+          if (quantityChange !== 0) {
+            addActionLog('quantity_change', oldItem.name, null, quantityChange)
+          }
+        }
         setItems(items.map(item => 
           item.id === id ? { ...item, quantity: num } : item
         ))
@@ -707,6 +760,7 @@ function App({ user, supabase }) {
         const categoryToDelete = value.substring(2).trim()
         if (categoryToDelete) {
           // Удаляем все товары этой категории
+          addActionLog('category_deleted', null, categoryToDelete)
           setItems(items.filter(item => item.category !== categoryToDelete))
           setEditing({ id: null, field: null })
           setEditingValue('')
@@ -859,6 +913,7 @@ function App({ user, supabase }) {
     // Режим удаления -#
     if (searchQuery.trim().endsWith('-#')) {
       // Удаляем товары этой категории
+      addActionLog('category_deleted', null, category)
       setItems(currentItems => {
         const filtered = currentItems.filter(item => item.category !== category)
         return filtered
@@ -1400,6 +1455,83 @@ function App({ user, supabase }) {
         )
         )
       })()}
+      
+      {/* Логи действий */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: '430px',
+        backgroundColor: isDarkTheme ? '#1a1a1a' : '#ffffff',
+        borderTop: `1px solid ${isDarkTheme ? '#333333' : '#e0e0e0'}`,
+        padding: '12px',
+        maxHeight: showAllLogs ? '200px' : '120px',
+        overflowY: 'auto',
+        zIndex: 100,
+        boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.2)'
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '8px'
+        }}>
+          <div style={{
+            color: isDarkTheme ? '#ffffff' : '#000000',
+            fontSize: '12px',
+            fontWeight: 'bold'
+          }}>
+            История действий
+          </div>
+          {actionLogs.length > 5 && (
+            <button
+              onClick={() => setShowAllLogs(!showAllLogs)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: isDarkTheme ? '#968686' : '#666666',
+                fontSize: '11px',
+                cursor: 'pointer',
+                textDecoration: 'underline'
+              }}
+            >
+              {showAllLogs ? 'Свернуть' : 'Показать все'}
+            </button>
+          )}
+        </div>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px'
+        }}>
+          {(showAllLogs ? actionLogs : actionLogs.slice(0, 5)).map(log => (
+            <div
+              key={log.id}
+              style={{
+                fontSize: '11px',
+                color: isDarkTheme ? '#968686' : '#666666',
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: '8px'
+              }}
+            >
+              <span>{log.message}</span>
+              <span style={{ whiteSpace: 'nowrap', fontSize: '10px' }}>{log.time}</span>
+            </div>
+          ))}
+          {actionLogs.length === 0 && (
+            <div style={{
+              fontSize: '11px',
+              color: isDarkTheme ? '#968686' : '#666666',
+              fontStyle: 'italic'
+            }}>
+              Нет действий
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
