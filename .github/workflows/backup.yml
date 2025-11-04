@@ -39,88 +39,11 @@ jobs:
           echo "🔍 Проверка формата URL..."
           echo "URL (первые 50 символов): ${SUPABASE_DB_URL:0:50}..."
           
-          # Извлекаем компоненты из URL правильно
-          # Формат: postgresql://user:pass@host:port/db
-          # Используем Python для надежного парсинга URL (всегда доступен в GitHub Actions)
-          echo "🔍 Парсинг URL через Python..."
+          # Используем прямой URL - pg_dump сам правильно парсит его
+          echo "🔄 Запуск pg_dump через прямой URL..."
           
-          PYTHON_PARSE=$(python3 << 'EOF'
-import sys
-from urllib.parse import urlparse, unquote
-
-url = sys.argv[1]
-parsed = urlparse(url)
-
-# Извлекаем компоненты
-username = parsed.username or ""
-password = parsed.password or ""
-hostname = parsed.hostname or ""
-port = parsed.port or ""
-path = parsed.path.lstrip('/') or "postgres"
-
-print(f"USER:{username}")
-print(f"PASS:{password}")
-print(f"HOST:{hostname}")
-print(f"PORT:{port}")
-print(f"DB:{path}")
-EOF
-"$SUPABASE_DB_URL" 2>/dev/null)
-          
-          if [ -n "$PYTHON_PARSE" ]; then
-            DB_USER=$(echo "$PYTHON_PARSE" | grep "^USER:" | cut -d: -f2-)
-            DB_PASS=$(echo "$PYTHON_PARSE" | grep "^PASS:" | cut -d: -f2-)
-            DB_HOST=$(echo "$PYTHON_PARSE" | grep "^HOST:" | cut -d: -f2-)
-            DB_PORT=$(echo "$PYTHON_PARSE" | grep "^PORT:" | cut -d: -f2-)
-            DB_NAME=$(echo "$PYTHON_PARSE" | grep "^DB:" | cut -d: -f2-)
-          else
-            echo "⚠️ Python парсинг не сработал, используем fallback..."
-            # Fallback: простой парсинг
-            DB_URL_NO_PROTOCOL="${SUPABASE_DB_URL#postgresql://}"
-            DB_USER_PASS="${DB_URL_NO_PROTOCOL%%@*}"
-            DB_HOST_PORT_DB="${DB_URL_NO_PROTOCOL#*@}"
-            
-            DB_USER="${DB_USER_PASS%%:*}"
-            DB_PASS="${DB_USER_PASS#*:}"
-            
-            # Находим последнее двоеточие перед слэшем (это порт)
-            DB_HOST_PORT_DB_NO_SLASH="${DB_HOST_PORT_DB%%/*}"
-            DB_PORT="${DB_HOST_PORT_DB_NO_SLASH##*:}"
-            DB_HOST="${DB_HOST_PORT_DB_NO_SLASH%:*}"
-            DB_NAME="${DB_HOST_PORT_DB#*/}"
-          fi
-          
-          # Декодируем URL-encoded пароль
-          DB_PASS_DECODED=$(echo -n "$DB_PASS" | sed 's/%24/$/g' | sed 's/%40/@/g' | sed 's/%3A/:/g' | sed 's/%2F/\//g')
-          
-          echo "📋 Параметры подключения:"
-          echo "  Host: $DB_HOST"
-          echo "  Port: $DB_PORT"
-          echo "  User: $DB_USER"
-          echo "  Database: $DB_NAME"
-          
-          # Получаем IPv4 адрес хоста для форсирования IPv4
-          echo "🔍 Определение IPv4 адреса..."
-          DB_HOST_IPV4=$(getent hosts "$DB_HOST" | awk '{ print $1 }' | grep -E '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -1)
-          
-          if [ -z "$DB_HOST_IPV4" ]; then
-            echo "⚠️ Не удалось получить IPv4 адрес, используем хост по имени"
-            DB_HOST_TO_USE="$DB_HOST"
-          else
-            echo "✅ Используем IPv4 адрес: $DB_HOST_IPV4"
-            DB_HOST_TO_USE="$DB_HOST_IPV4"
-          fi
-          
-          # Устанавливаем PGPASSWORD
-          export PGPASSWORD="$DB_PASS_DECODED"
-          
-          # Форсируем IPv4 через переменную окружения PGSSLMODE и использование IP
-          # Также пробуем использовать IPv4 напрямую
-          echo "🔄 Запуск pg_dump с IPv4..."
-          pg_dump \
-            --host="$DB_HOST_TO_USE" \
-            --port="$DB_PORT" \
-            --username="$DB_USER" \
-            --dbname="$DB_NAME" \
+          # Пробуем подключиться через прямой URL
+          pg_dump "$SUPABASE_DB_URL" \
             --no-owner \
             --no-acl \
             --clean \
@@ -128,45 +51,13 @@ EOF
             --verbose \
             -f "$BACKUP_FILE" 2>&1 | tee backup.log || DUMP_ERROR=$?
           
-          unset PGPASSWORD
-          
-          # Если не удалось, пробуем через прямой URL с IPv4
+          # Проверяем результат
           if [ -n "$DUMP_ERROR" ] || [ ! -f "$BACKUP_FILE" ] || [ ! -s "$BACKUP_FILE" ]; then
-            echo "❌ Первая попытка не удалась, пробуем через Connection Pooling..."
-            
-            # Если это прямое подключение, пробуем Connection Pooling
-            if [[ "$DB_HOST" == db.* ]]; then
-              # Конвертируем в Connection Pooling формат
-              PROJECT_REF="${DB_HOST#db.}"
-              PROJECT_REF="${PROJECT_REF%%.supabase.co}"
-              
-              POOLER_URL="postgresql://postgres.${PROJECT_REF}:${DB_PASS}@aws-0-eu-central-1.pooler.supabase.com:6543/${DB_NAME}"
-              
-              echo "🔄 Пробуем Connection Pooling: postgresql://postgres.${PROJECT_REF}:***@aws-0-eu-central-1.pooler.supabase.com:6543/${DB_NAME}"
-              
-              export PGPASSWORD="$DB_PASS_DECODED"
-              
-              pg_dump "$POOLER_URL" \
-                --no-owner \
-                --no-acl \
-                --clean \
-                --if-exists \
-                --verbose \
-                -f "$BACKUP_FILE" 2>&1 | tee -a backup.log || true
-              
-              unset PGPASSWORD
-            fi
-          fi
-          
-          # Проверяем, что файл создан и не пустой
-          if [ ! -f "$BACKUP_FILE" ] || [ ! -s "$BACKUP_FILE" ]; then
-            echo "❌ Ошибка: бэкап не создан или пустой"
-            echo "📄 Последние строки лога:"
-            tail -30 backup.log || true
+            echo "❌ Прямой URL не сработал, проверяем логи..."
+            cat backup.log
             echo ""
-            echo "💡 Проблема: Не удается подключиться через IPv4/IPv6"
-            echo "   Попробуйте использовать Connection Pooling URL в секрете:"
-            echo "   postgresql://postgres.orrkwxgfoafyenudouqh:Kraba%24et%40Supabase@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+            echo "💡 Убедитесь, что в секрете SUPABASE_DB_URL используется правильный формат:"
+            echo "   Для Connection Pooling: postgresql://postgres.orrkwxgfoafyenudouqh:Kraba%24et%40Supabase@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
             exit 1
           fi
           
