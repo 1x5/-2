@@ -78,8 +78,9 @@ jobs:
           if git diff --staged --quiet; then
             echo "ℹ️ Нет изменений для коммита"
           else
+            git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
             git commit -m "Auto backup: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-            git push https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git HEAD:main
+            git push origin HEAD:main
             echo "✅ Бэкап закоммичен и отправлен"
           fi
 
