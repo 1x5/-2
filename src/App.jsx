@@ -23,10 +23,7 @@ function App({ user, supabase }) {
     const saved = localStorage.getItem('sumki-theme')
     return saved ? saved === 'dark' : true
   })
-  const [actionLogs, setActionLogs] = useState(() => {
-    const saved = localStorage.getItem('sumki-action-logs')
-    return saved ? JSON.parse(saved) : []
-  })
+  const [actionLogs, setActionLogs] = useState([]) // Начинаем с пустого массива, загрузим из Supabase
   const [showAllLogs, setShowAllLogs] = useState(false)
   const suppressNextBlurSaveRef = useRef(false)
   const inputRef = useRef(null)
@@ -76,11 +73,17 @@ function App({ user, supabase }) {
     // Сохраняем в Supabase
     if (supabase && user?.id) {
       try {
-        await supabase
+        const { error: insertError } = await supabase
           .from('action_logs')
           .insert([newLog])
+        
+        if (insertError) {
+          console.error('Ошибка сохранения лога в Supabase:', insertError)
+          // Логи остаются в localStorage, что уже сделано выше
+        }
       } catch (error) {
-        console.error('Ошибка сохранения лога:', error)
+        console.error('Критическая ошибка сохранения лога:', error)
+        // Логи остаются в localStorage, что уже сделано выше
       }
     }
   }
@@ -195,23 +198,67 @@ function App({ user, supabase }) {
         }
         
         // Загружаем логи действий
-        const { data: logsData, error: logsError } = await supabase
-          .from('action_logs')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('timestamp', { ascending: false })
-          .limit(20)
-        
-        if (!logsError && logsData) {
-          const formattedLogs = logsData.map(log => ({
-            id: log.id || Date.now(),
-            action: log.action,
-            message: log.message,
-            time: log.time,
-            timestamp: log.timestamp
-          }))
-          setActionLogs(formattedLogs)
-          localStorage.setItem('sumki-action-logs', JSON.stringify(formattedLogs))
+        try {
+          const { data: logsData, error: logsError } = await supabase
+            .from('action_logs')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('timestamp', { ascending: false })
+            .limit(20)
+          
+          if (logsError) {
+            console.error('Ошибка загрузки логов:', logsError)
+            // Если таблица не существует или другая ошибка - используем localStorage как fallback
+            const cachedLogs = localStorage.getItem('sumki-action-logs')
+            if (cachedLogs) {
+              try {
+                const parsed = JSON.parse(cachedLogs)
+                if (parsed.length > 0) {
+                  setActionLogs(parsed)
+                }
+              } catch (e) {
+                // Тихая ошибка
+              }
+            }
+          } else if (logsData && logsData.length > 0) {
+            // Логи из Supabase есть - используем их
+            const formattedLogs = logsData.map(log => ({
+              id: log.id || Date.now(),
+              action: log.action,
+              message: log.message,
+              time: log.time,
+              timestamp: log.timestamp
+            }))
+            setActionLogs(formattedLogs)
+            localStorage.setItem('sumki-action-logs', JSON.stringify(formattedLogs))
+          } else {
+            // Логов нет в Supabase - пробуем загрузить из localStorage
+            const cachedLogs = localStorage.getItem('sumki-action-logs')
+            if (cachedLogs) {
+              try {
+                const parsed = JSON.parse(cachedLogs)
+                if (parsed.length > 0) {
+                  setActionLogs(parsed)
+                }
+              } catch (e) {
+                // Тихая ошибка
+              }
+            }
+          }
+        } catch (logError) {
+          console.error('Критическая ошибка загрузки логов:', logError)
+          // Пробуем загрузить из localStorage
+          const cachedLogs = localStorage.getItem('sumki-action-logs')
+          if (cachedLogs) {
+            try {
+              const parsed = JSON.parse(cachedLogs)
+              if (parsed.length > 0) {
+                setActionLogs(parsed)
+              }
+            } catch (e) {
+              // Тихая ошибка
+            }
+          }
         }
         
         isInitialLoadRef.current = false
