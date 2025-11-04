@@ -208,16 +208,24 @@ function App({ user, supabase }) {
           
           if (logsError) {
             console.error('Ошибка загрузки логов:', logsError)
-            // Если таблица не существует или другая ошибка - используем localStorage как fallback
-            const cachedLogs = localStorage.getItem('sumki-action-logs')
-            if (cachedLogs) {
-              try {
-                const parsed = JSON.parse(cachedLogs)
-                if (parsed.length > 0) {
-                  setActionLogs(parsed)
+            // Проверяем, существует ли таблица (PGRST205 = таблица не найдена)
+            if (logsError.code === 'PGRST205' || logsError.code === '42P01' || logsError.message?.includes('does not exist') || logsError.message?.includes('schema cache')) {
+              console.warn('⚠️ Таблица action_logs не создана в Supabase')
+              console.warn('📋 Выполните SQL-скрипт create_action_logs_table.sql в Supabase Dashboard → SQL Editor')
+              // Логи остаются пустыми, будут сохранены локально после действий
+              // После создания таблицы новые логи начнут сохраняться в Supabase
+            } else {
+              // Другая ошибка - используем localStorage как fallback
+              const cachedLogs = localStorage.getItem('sumki-action-logs')
+              if (cachedLogs) {
+                try {
+                  const parsed = JSON.parse(cachedLogs)
+                  if (parsed.length > 0) {
+                    setActionLogs(parsed)
+                  }
+                } catch (e) {
+                  // Тихая ошибка
                 }
-              } catch (e) {
-                // Тихая ошибка
               }
             }
           } else if (logsData && logsData.length > 0) {
