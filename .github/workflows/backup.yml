@@ -53,11 +53,28 @@ jobs:
           
           # Проверяем результат
           if [ -n "$DUMP_ERROR" ] || [ ! -f "$BACKUP_FILE" ] || [ ! -s "$BACKUP_FILE" ]; then
-            echo "❌ Прямой URL не сработал, проверяем логи..."
+            echo "❌ Прямой URL не сработал"
+            echo "📄 Логи ошибки:"
             cat backup.log
             echo ""
-            echo "💡 Убедитесь, что в секрете SUPABASE_DB_URL используется правильный формат:"
-            echo "   Для Connection Pooling: postgresql://postgres.orrkwxgfoafyenudouqh:Kraba%24et%40Supabase@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+            echo "💡 Диагностика проблемы:"
+            echo ""
+            echo "Ошибка 'Tenant or user not found' обычно означает:"
+            echo "  1. Неправильный project-ref в формате пользователя"
+            echo "  2. Неправильный пароль (должен быть закодирован: \$ → %24, @ → %40)"
+            echo "  3. Connection Pooling не включен или настроен неправильно"
+            echo ""
+            echo "Проверьте в Supabase Dashboard → Settings → Database:"
+            echo "  - Connection Pooling должен быть включен"
+            echo "  - Используйте Session mode для pg_dump"
+            echo ""
+            echo "Правильный формат URL для Connection Pooling:"
+            echo "  postgresql://postgres.orrkwxgfoafyenudouqh:Kraba%24et%40Supabase@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+            echo ""
+            echo "Где:"
+            echo "  - postgres.orrkwxgfoafyenudouqh - формат пользователя для pooling (с точкой!)"
+            echo "  - Kraba%24et%40Supabase - пароль с закодированными символами"
+            echo "  - aws-0-eu-central-1.pooler.supabase.com:6543 - pooling хост"
             exit 1
           fi
           
