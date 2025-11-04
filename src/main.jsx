@@ -26,13 +26,7 @@ function Main() {
       timeZoneName: 'short'
     })
     
-    console.log('%c════════════════════════════════════════', 'color: #00ff00; font-weight: bold')
-    console.log('%c🚀 Приложение загружено', 'color: #00ff00; font-weight: bold; font-size: 14px')
-    console.log('%c════════════════════════════════════════', 'color: #00ff00; font-weight: bold')
-    console.log(`%c📦 Версия: ${APP_VERSION}`, 'color: #00aaff; font-weight: bold')
-    console.log(`%c📅 Время сборки: ${formattedDate}`, 'color: #00aaff; font-weight: bold')
-    console.log(`%c🕐 Текущее время: ${new Date().toLocaleString('ru-RU')}`, 'color: #888888')
-    console.log('%c════════════════════════════════════════', 'color: #00ff00; font-weight: bold')
+    console.log(`🚀 Приложение v${APP_VERSION} | Сборка: ${formattedDate}`)
   }, [])
 
   useEffect(() => {

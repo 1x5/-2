@@ -68,25 +68,10 @@ function App({ user, supabase }) {
 
   // Загрузка данных из Supabase
   useEffect(() => {
-    if (!supabase || !user) {
-      console.log('Supabase или пользователь не загружены:', { supabase: !!supabase, user: !!user })
-      return
-    }
+    if (!supabase || !user) return
     
     const loadData = async () => {
       try {
-        console.log('🔍 Загрузка данных из PostgreSQL...')
-        console.log('👤 User ID:', user.id)
-        console.log('📧 User email:', user.email)
-        
-        // Проверяем текущую сессию
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        if (sessionError) {
-          console.error('❌ Ошибка проверки сессии:', sessionError)
-        } else {
-          console.log('✅ Сессия активна:', !!session)
-        }
-        
         // Загружаем товары
         const { data: itemsData, error: itemsError } = await supabase
           .from('items')
@@ -94,53 +79,37 @@ function App({ user, supabase }) {
           .order('id', { ascending: true })
         
         if (itemsError) {
-          console.error('❌ Ошибка загрузки товаров:', itemsError)
-          console.error('Детали ошибки:', {
-            message: itemsError.message,
-            details: itemsError.details,
-            hint: itemsError.hint,
-            code: itemsError.code
-          })
+          console.error('❌ Ошибка загрузки:', itemsError.message)
           throw itemsError
         }
         
-        console.log('📦 Загружено товаров:', itemsData?.length || 0)
         if (itemsData && itemsData.length > 0) {
-          console.log('📋 Первые товары:', itemsData.slice(0, 3))
-          // Сохраняем ID из БД как dbId для отслеживания
           const itemsWithDbId = itemsData.map(item => ({
             ...item,
-            dbId: item.id, // ID из базы данных
-            id: item.id // Сохраняем id для совместимости
+            dbId: item.id,
+            id: item.id
           }))
           setItems(itemsWithDbId)
           lastSyncItemsRef.current = JSON.stringify(itemsWithDbId)
           dataLoadedRef.current = true
         } else {
-          console.warn('⚠️ База данных пуста или товары не найдены')
           // Пробуем загрузить из localStorage как резерв
           const cached = localStorage.getItem('sumki-items')
           if (cached) {
             try {
               const cachedItems = JSON.parse(cached)
-              console.log('💾 Загружаем из кэша:', cachedItems.length, 'товаров')
               if (cachedItems.length > 0) {
-                // Восстанавливаем с сохранением dbId если есть
                 const restoredItems = cachedItems.map(item => ({
                   ...item,
-                  dbId: item.dbId || item.id // Сохраняем dbId если был
+                  dbId: item.dbId || item.id
                 }))
                 setItems(restoredItems)
                 lastSyncItemsRef.current = JSON.stringify(restoredItems)
-                // Показываем уведомление пользователю
-                alert(`Восстановлено ${restoredItems.length} товаров из кэша.\n\nДанные будут синхронизированы с базой через несколько секунд.`)
+                alert(`Восстановлено ${restoredItems.length} товаров из кэша.`)
               }
             } catch (e) {
               console.error('Ошибка загрузки из кэша:', e)
             }
-          } else {
-            console.warn('⚠️ Кэш тоже пуст. Проверьте localStorage:')
-            console.log('localStorage keys:', Object.keys(localStorage))
           }
           dataLoadedRef.current = true
         }
@@ -151,36 +120,30 @@ function App({ user, supabase }) {
           .select('name')
         
         if (categoriesError) {
-          console.error('❌ Ошибка загрузки категорий:', categoriesError)
+          console.error('❌ Ошибка загрузки категорий:', categoriesError.message)
           throw categoriesError
         }
         
-        console.log('📁 Загружено категорий:', categoriesData?.length || 0)
         if (categoriesData && categoriesData.length > 0) {
           setEmptyCategories(categoriesData.map(c => c.name))
         } else {
-          // Пробуем загрузить категории из кэша
           const cachedCategories = localStorage.getItem('sumki-empty-categories')
           if (cachedCategories) {
             try {
               const categories = JSON.parse(cachedCategories)
-              console.log('💾 Загружаем категории из кэша:', categories.length, 'шт.')
               if (categories.length > 0) {
                 setEmptyCategories(categories)
               }
             } catch (e) {
-              console.error('Ошибка загрузки категорий из кэша:', e)
+              // Тихая ошибка
             }
           }
         }
         
-        console.log('✅ Данные успешно загружены из PostgreSQL')
-        // Помечаем, что начальная загрузка завершена после фактической загрузки
         isInitialLoadRef.current = false
       } catch (error) {
-        console.error('❌ Критическая ошибка загрузки данных:', error)
-        // Показываем пользователю ошибку
-        alert(`Ошибка загрузки данных: ${error.message}\n\nПроверьте консоль для деталей.`)
+        console.error('❌ Ошибка загрузки:', error.message)
+        alert(`Ошибка загрузки данных: ${error.message}`)
         isInitialLoadRef.current = false
       }
     }
@@ -191,34 +154,17 @@ function App({ user, supabase }) {
   // Безопасная синхронизация данных с Supabase (PostgreSQL)
   useEffect(() => {
     // Не синхронизируем во время начальной загрузки
-    if (isInitialLoadRef.current || !dataLoadedRef.current) {
-      console.log('⏸️ Пропуск синхронизации (начальная загрузка)')
-      return
-    }
+    if (isInitialLoadRef.current || !dataLoadedRef.current) return
     
     // Проверки перед синхронизацией
-    if (!supabase || !user) {
-      console.warn('⚠️ Нет supabase или user для синхронизации')
-      return
-    }
-    
-    if (!user.id) {
-      console.error('❌ Нет user.id для синхронизации')
-      return
-    }
+    if (!supabase || !user || !user.id) return
     
     // Проверяем, изменились ли данные
     const currentItemsStr = JSON.stringify(items)
-    if (currentItemsStr === lastSyncItemsRef.current) {
-      console.log('⏭️ Данные не изменились, пропуск синхронизации')
-      return
-    }
+    if (currentItemsStr === lastSyncItemsRef.current) return
     
     // Защита от параллельных синхронизаций
-    if (syncInProgressRef.current) {
-      console.log('⏸️ Синхронизация уже выполняется, пропуск')
-      return
-    }
+    if (syncInProgressRef.current) return
     
     // Функция для определения типа ошибки
     const isNetworkError = (error) => {
@@ -244,8 +190,7 @@ function App({ user, supabase }) {
             throw error
           }
           
-          const delay = Math.min(1000 * Math.pow(2, attempt), 10000) // Макс 10 секунд
-          console.log(`🔄 Повторная попытка ${attempt + 1}/${maxRetries} через ${delay}ms...`)
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000)
           await new Promise(resolve => setTimeout(resolve, delay))
         }
       }
@@ -256,8 +201,6 @@ function App({ user, supabase }) {
       const backupItems = [...items] // Резервная копия на случай ошибки
       
       try {
-        console.log('🔄 Начало безопасной синхронизации товаров...', items.length, 'шт.')
-        
         // ШАГ 1: Получаем текущие данные из базы (для сравнения) с retry
         const { data: existingItems, error: fetchError } = await retryWithBackoff(async () => {
           const result = await supabase
@@ -271,14 +214,9 @@ function App({ user, supabase }) {
           return result
         })
         
-        if (fetchError) {
-          console.error('❌ Ошибка получения данных из базы:', fetchError)
-          throw fetchError
-        }
+        if (fetchError) throw fetchError
         
-        syncRetryCountRef.current = 0 // Сбрасываем счетчик при успехе
-        
-        console.log('📊 Товаров в базе:', existingItems?.length || 0)
+        syncRetryCountRef.current = 0
         
         // ШАГ 2: Определяем операции по ID (лучшая практика - использовать ID из БД)
         // Создаем маппинг существующих товаров по ID из БД
@@ -351,7 +289,6 @@ function App({ user, supabase }) {
         
         // 3.1. Удаляем товары, которых нет локально (с retry)
         if (idsToDelete.length > 0) {
-          console.log('🗑️ Удаление товаров:', idsToDelete.length, 'шт.')
           await retryWithBackoff(async () => {
             const { error: deleteError } = await supabase
               .from('items')
@@ -359,16 +296,12 @@ function App({ user, supabase }) {
               .in('id', idsToDelete)
               .eq('user_id', user.id)
             
-            if (deleteError) {
-              console.error('❌ Ошибка удаления:', deleteError)
-              throw deleteError
-            }
+            if (deleteError) throw deleteError
           })
         }
         
         // 3.2. Обновляем существующие товары по ID (с retry)
         if (itemsToUpdate.length > 0) {
-          console.log('🔄 Обновление товаров:', itemsToUpdate.length, 'шт.')
           for (const item of itemsToUpdate) {
             await retryWithBackoff(async () => {
               const { id, ...updateData } = item
@@ -378,44 +311,31 @@ function App({ user, supabase }) {
                 .eq('id', id)
                 .eq('user_id', user.id)
               
-              if (updateError) {
-                console.error('❌ Ошибка обновления товара:', updateError, item)
-                throw updateError
-              }
+              if (updateError) throw updateError
             })
           }
         }
         
         // 3.3. Вставляем новые товары (с retry)
         if (itemsToInsert.length > 0) {
-          console.log('➕ Вставка новых товаров:', itemsToInsert.length, 'шт.')
           const { data: insertedItems, error: insertError } = await retryWithBackoff(async () => {
             const result = await supabase
               .from('items')
               .insert(itemsToInsert)
               .select()
             
-            if (result.error) {
-              throw result.error
-            }
+            if (result.error) throw result.error
             return result
           })
           
-          if (insertError) {
-            console.error('❌ Ошибка insert:', insertError)
-            throw insertError
-          }
+          if (insertError) throw insertError
           
-          // Обновляем локальные товары с ID из базы (сопоставляем по порядку)
+          // Обновляем локальные товары с ID из базы
           if (insertedItems && insertedItems.length > 0) {
-            console.log('✅ Получены ID новых товаров из БД:', insertedItems.map(i => i.id))
-            
-            // Создаем маппинг отрицательных ID к новым ID из БД
             const negativeIdToDbId = new Map()
             let insertIndex = 0
             
             items.forEach(localItem => {
-              // Если это новый товар (отрицательный ID или нет dbId)
               if ((localItem.id < 0 || !localItem.dbId) && insertIndex < insertedItems.length) {
                 const dbItem = insertedItems[insertIndex]
                 negativeIdToDbId.set(localItem.id, dbItem.id)
@@ -423,13 +343,11 @@ function App({ user, supabase }) {
               }
             })
             
-            // Обновляем локальные товары с новыми ID из БД
             if (negativeIdToDbId.size > 0) {
               setItems(currentItems => {
                 return currentItems.map(item => {
                   const newDbId = negativeIdToDbId.get(item.id)
                   if (newDbId) {
-                    console.log(`🔄 Обновление ID товара: ${item.id} → ${newDbId}`)
                     return {
                       ...item,
                       id: newDbId,
@@ -454,38 +372,15 @@ function App({ user, supabase }) {
           })
         }, 200)
         
-        console.log('✅ Данные успешно синхронизированы с PostgreSQL')
-        
       } catch (error) {
-        console.error('❌ Критическая ошибка синхронизации с PostgreSQL:', error)
-        console.error('📋 Детали ошибки:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        })
-        
         const isNetworkErr = isNetworkError(error)
         
-        if (isNetworkErr) {
-          // Сетевая ошибка - данные уже сохранены локально (в items и localStorage)
-          syncRetryCountRef.current++
-          
-          console.warn('⚠️ Сетевая ошибка синхронизации')
-          console.warn('📦 Данные сохранены локально. Синхронизация произойдет автоматически при восстановлении соединения.')
-          
-          // НЕ восстанавливаем backupItems - текущие данные правильные, просто не синхронизированы
-          // НЕ показываем alert - данные сохранены локально и синхронизируются автоматически
-          // Синхронизация произойдет автоматически при следующем изменении или при восстановлении сети
-        } else {
-          // Другая ошибка (не сеть) - восстанавливаем из резерва
-          console.log('🔄 Восстановление данных из резервной копии...')
+        if (!isNetworkErr) {
           setItems(backupItems)
-          
-          // Показываем alert только для критических ошибок (не сетевых)
           const isCriticalError = error.code && !['PGRST116', '42883'].includes(error.code)
           if (isCriticalError) {
-            alert(`Ошибка сохранения: ${error.message}\n\nДанные восстановлены из памяти.`)
+            console.error('❌ Ошибка синхронизации:', error.message)
+            alert(`Ошибка сохранения: ${error.message}`)
           }
         }
       } finally {
@@ -524,8 +419,6 @@ function App({ user, supabase }) {
     
     const syncToSupabase = async () => {
       try {
-        console.log('🔄 Безопасная синхронизация категорий...', emptyCategories.length, 'шт.')
-        
         // Получаем текущие категории
         const { data: existingCategories, error: fetchError } = await supabase
           .from('empty_categories')
@@ -562,11 +455,8 @@ function App({ user, supabase }) {
             .insert(categoriesToSave)
           if (insertError) throw insertError
         }
-        
-        console.log('✅ Категории синхронизированы с PostgreSQL')
       } catch (error) {
-        console.error('❌ Ошибка синхронизации категорий:', error)
-        // Не показываем alert для категорий, только логируем
+        // Тихая ошибка для категорий
       }
     }
     
@@ -851,16 +741,12 @@ function App({ user, supabase }) {
               if (categoryExists) {
                 // Категория существует - меняем категорию товара
                 newCategory = selectedCategory
-              } else {
-                // Категории не существует - не создаем новую, оставляем старую
-                console.log('Category does not exist:', selectedCategory, 'keeping current category:', item.category)
               }
             }
             // Если # но нет категории - оставляем прежнюю категорию
           }
           
           const newColor = getColorFromName(newName)
-          console.log('💾 Сохранение товара:', { id, dbId: currentItem.dbId, name: newName, category: newCategory })
           
           // КРИТИЧНО: Сохраняем dbId при обновлении (чтобы не создавался новый товар)
           return { 
@@ -905,16 +791,6 @@ function App({ user, supabase }) {
       // Проверяем режим создания: начинается с +#
       const isCreateMode = beforeHash.trim().startsWith('+') || beforeHash.trim() === '+'
       
-      console.log('updateCategorySuggestions:', { 
-        value, 
-        beforeHash: `"${beforeHash}"`,
-        afterHash, 
-        searchTerm, 
-        categoriesToShow, 
-        isDeleteMode,
-        isCreateMode
-      })
-      
       // Проверяем, находимся ли мы в режиме редактирования названия товара
       const isEditingItemName = editing.id !== null && editing.field === 'name'
       
@@ -922,66 +798,52 @@ function App({ user, supabase }) {
       // Режимы создания (+#) и удаления (-#) доступны только из поиска
       if (isEditingItemName) {
         if (searchTerm === '' || afterHash.trim() === '') {
-          console.log('Edit mode - showing all categories:', categoriesToShow)
           setSuggestedCategories(categoriesToShow)
           setShowCategorySuggestions(true)
         } else {
           const filtered = categoriesToShow.filter(cat => 
             cat.toLowerCase().includes(searchTerm)
           )
-          console.log('Edit mode - filtered categories:', filtered)
           setSuggestedCategories(filtered)
           setShowCategorySuggestions(filtered.length > 0)
         }
       } else if (isDeleteMode) {
         // Режим удаления - показываем все категории
         if (searchTerm === '' || afterHash.trim() === '') {
-          console.log('Delete mode - showing all categories:', categoriesToShow)
           setSuggestedCategories(categoriesToShow)
           setShowCategorySuggestions(true)
         } else {
-          // Фильтруем категории для удаления
           const filtered = categoriesToShow.filter(cat => 
             cat.toLowerCase().includes(searchTerm)
           )
-          console.log('Delete mode - filtered categories:', filtered)
           setSuggestedCategories(filtered)
           setShowCategorySuggestions(filtered.length > 0)
         }
       } else if (isCreateMode) {
         // Режим создания `+#` - показываем категории для добавления товара
         if (searchTerm === '' || afterHash.trim() === '') {
-          console.log('Create mode - showing all categories:', categoriesToShow)
           setSuggestedCategories(categoriesToShow)
           setShowCategorySuggestions(true)
         } else {
-          // Фильтруем категории для добавления товара
           const filtered = categoriesToShow.filter(cat => 
             cat.toLowerCase().includes(searchTerm)
           )
-          console.log('Create mode - filtered categories:', filtered)
           setSuggestedCategories(filtered)
           setShowCategorySuggestions(filtered.length > 0)
         }
       } else {
         // Обычный режим смены категории
         if (searchTerm === '' || afterHash.trim() === '') {
-          // Показываем все категории когда только # введен (без текста после #)
-          console.log('Setting all categories:', categoriesToShow)
           setSuggestedCategories(categoriesToShow)
           setShowCategorySuggestions(true)
         } else if (afterHash.length > 0) {
-          // Есть текст после # - ищем категорию которая уже выбрана (не показываем подсказки)
           const existingCategory = categoriesToShow.find(cat => cat === afterHash.trim())
           if (existingCategory) {
-            // Категория уже выбрана - прячем подсказки
             setShowCategorySuggestions(false)
           } else {
-            // Фильтруем по поисковому запросу
             const filtered = categoriesToShow.filter(cat => 
               cat.toLowerCase().includes(searchTerm)
             )
-            console.log('Setting filtered categories:', filtered)
             setSuggestedCategories(filtered)
             setShowCategorySuggestions(filtered.length > 0)
           }
@@ -994,11 +856,8 @@ function App({ user, supabase }) {
 
   // Выбрать категорию из предложений
   const selectCategory = (id, category) => {
-    console.log('selectCategory called:', { id, category, searchQuery })
-    
     // Режим удаления -#
     if (searchQuery.trim().endsWith('-#')) {
-      console.log('Deleting category from search:', category)
       // Удаляем товары этой категории
       setItems(currentItems => {
         const filtered = currentItems.filter(item => item.category !== category)
@@ -1013,7 +872,6 @@ function App({ user, supabase }) {
     
     // Режим создания +#
     if (searchQuery.startsWith('+#')) {
-      console.log('Adding item to category from +#:', category)
       const maxId = Math.max(...items.map(i => Math.abs(i.id)), 0)
       const newId = -(maxId + 1) // Отрицательный ID = новый товар
       const newItem = {
@@ -1515,7 +1373,6 @@ function App({ user, supabase }) {
       {/* Подсказки категорий через портал - для поиска и редактирования */}
       {(() => {
         const shouldShow = showCategorySuggestions && (searchQuery.includes('#') || (editing.id !== null && editing.field === 'name')) && suggestedCategories.length > 0
-        console.log('Should show suggestions portal:', shouldShow, { showCategorySuggestions, searchQuery, editingField: editing.field, suggestedCategoriesLength: suggestedCategories.length })
         return shouldShow && (
         createPortal(
           <div 
