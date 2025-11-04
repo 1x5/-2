@@ -29,7 +29,6 @@ function App({ user, supabase }) {
   const dataLoadedRef = useRef(false)
   const syncInProgressRef = useRef(false)
   const lastSyncItemsRef = useRef(null)
-  const pendingSyncRef = useRef(null) // Очередь синхронизации при ошибках
   const syncRetryCountRef = useRef(0) // Счетчик повторных попыток
 
   // Функция определения цвета по названию
