@@ -17,6 +17,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
       
       - name: Create backups directory
@@ -76,7 +77,8 @@ jobs:
             echo "ℹ️ Нет изменений для коммита"
           else
             git commit -m "Auto backup: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-            git push
+            git remote -v
+            git push origin main
             echo "✅ Бэкап закоммичен и отправлен"
           fi
 
