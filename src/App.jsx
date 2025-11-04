@@ -393,10 +393,14 @@ function App({ user, supabase }) {
         
         // ШАГ 4: Обновляем ссылку на последнюю синхронизацию
         // Обновляем после того, как все ID были обновлены
+        // Используем setTimeout чтобы дождаться обновления состояния после INSERT
         setTimeout(() => {
-          const updatedItemsStr = JSON.stringify(items)
-          lastSyncItemsRef.current = updatedItemsStr
-        }, 100)
+          setItems(currentItems => {
+            const updatedStr = JSON.stringify(currentItems)
+            lastSyncItemsRef.current = updatedStr
+            return currentItems
+          })
+        }, 200)
         
         console.log('✅ Данные успешно синхронизированы с PostgreSQL')
         
