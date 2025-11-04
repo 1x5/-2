@@ -37,7 +37,7 @@ function App({ user, supabase }) {
   const syncRetryCountRef = useRef(0) // Счетчик повторных попыток
 
   // Функция добавления лога действия
-  const addActionLog = (action, itemName = null, categoryName = null, quantityChange = null) => {
+  const addActionLog = async (action, itemName = null, categoryName = null, quantityChange = null) => {
     const now = new Date()
     const timeStr = now.toLocaleString('ru-RU', {
       year: 'numeric',
@@ -59,18 +59,30 @@ function App({ user, supabase }) {
     }
     
     const newLog = {
-      id: Date.now(),
       action,
       message,
       time: timeStr,
-      timestamp: now.getTime()
+      timestamp: now.toISOString(),
+      user_id: user?.id
     }
     
+    // Сохраняем локально
     setActionLogs(prevLogs => {
-      const updated = [newLog, ...prevLogs].slice(0, 20) // Храним максимум 20
+      const updated = [{ ...newLog, id: Date.now() }, ...prevLogs].slice(0, 20)
       localStorage.setItem('sumki-action-logs', JSON.stringify(updated))
       return updated
     })
+    
+    // Сохраняем в Supabase
+    if (supabase && user?.id) {
+      try {
+        await supabase
+          .from('action_logs')
+          .insert([newLog])
+      } catch (error) {
+        console.error('Ошибка сохранения лога:', error)
+      }
+    }
   }
 
   // Функция определения цвета по названию
@@ -182,6 +194,26 @@ function App({ user, supabase }) {
           }
         }
         
+        // Загружаем логи действий
+        const { data: logsData, error: logsError } = await supabase
+          .from('action_logs')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('timestamp', { ascending: false })
+          .limit(20)
+        
+        if (!logsError && logsData) {
+          const formattedLogs = logsData.map(log => ({
+            id: log.id || Date.now(),
+            action: log.action,
+            message: log.message,
+            time: log.time,
+            timestamp: log.timestamp
+          }))
+          setActionLogs(formattedLogs)
+          localStorage.setItem('sumki-action-logs', JSON.stringify(formattedLogs))
+        }
+        
         isInitialLoadRef.current = false
       } catch (error) {
         console.error('❌ Ошибка загрузки:', error.message)
@@ -193,7 +225,7 @@ function App({ user, supabase }) {
     loadData()
   }, [supabase, user])
 
-  // Безопасная синхронизация данных с Supabase (PostgreSQL)
+  // Синхронизация данных с Supabase сразу после изменений
   useEffect(() => {
     // Не синхронизируем во время начальной загрузки
     if (isInitialLoadRef.current || !dataLoadedRef.current) return
@@ -207,6 +239,8 @@ function App({ user, supabase }) {
     
     // Защита от параллельных синхронизаций
     if (syncInProgressRef.current) return
+    
+    // Синхронизируем сразу (без дебаунса)
     
     // Функция для определения типа ошибки
     const isNetworkError = (error) => {
@@ -430,9 +464,8 @@ function App({ user, supabase }) {
       }
     }
     
-    // Дебаунс - синхронизируем через 1.5 секунды после последнего изменения
-    const timeoutId = setTimeout(syncToSupabase, 1500)
-    return () => clearTimeout(timeoutId)
+    // Синхронизируем сразу после изменений
+    syncToSupabase()
   }, [items, supabase, user])
   
   // Безопасная синхронизация категорий
@@ -698,7 +731,7 @@ function App({ user, supabase }) {
   }
 
   // Обработчик окончания свайпа
-  const handleTouchEnd = (e, id) => {
+  const handleTouchEnd = async (e, id) => {
     const offset = swipeOffset[id]?.offset || 0
     
     // Если свайп более -80px - удаляем
@@ -706,7 +739,7 @@ function App({ user, supabase }) {
       setDeletingId(id)
       const itemToDelete = items.find(item => item.id === id)
       if (itemToDelete) {
-        addActionLog('item_deleted', itemToDelete.name)
+        await addActionLog('item_deleted', itemToDelete.name)
       }
       // Удаляем сразу из состояния, анимация делается через CSS
       setTimeout(() => {
@@ -739,7 +772,7 @@ function App({ user, supabase }) {
   }
 
   // Сохранить изменения
-  const saveEdit = (id, field, value) => {
+  const saveEdit = async (id, field, value) => {
     if (field === 'quantity') {
       const num = parseInt(value)
       if (!isNaN(num) && num >= 0) {
@@ -747,7 +780,7 @@ function App({ user, supabase }) {
         if (oldItem) {
           const quantityChange = num - oldItem.quantity
           if (quantityChange !== 0) {
-            addActionLog('quantity_change', oldItem.name, null, quantityChange)
+            await addActionLog('quantity_change', oldItem.name, null, quantityChange)
           }
         }
         setItems(items.map(item => 
@@ -760,7 +793,7 @@ function App({ user, supabase }) {
         const categoryToDelete = value.substring(2).trim()
         if (categoryToDelete) {
           // Удаляем все товары этой категории
-          addActionLog('category_deleted', null, categoryToDelete)
+          await addActionLog('category_deleted', null, categoryToDelete)
           setItems(items.filter(item => item.category !== categoryToDelete))
           setEditing({ id: null, field: null })
           setEditingValue('')
@@ -909,11 +942,11 @@ function App({ user, supabase }) {
   }
 
   // Выбрать категорию из предложений
-  const selectCategory = (id, category) => {
+  const selectCategory = async (id, category) => {
     // Режим удаления -#
     if (searchQuery.trim().endsWith('-#')) {
       // Удаляем товары этой категории
-      addActionLog('category_deleted', null, category)
+      await addActionLog('category_deleted', null, category)
       setItems(currentItems => {
         const filtered = currentItems.filter(item => item.category !== category)
         return filtered
@@ -1333,26 +1366,97 @@ function App({ user, supabase }) {
                 ×
               </button>
             </div>
-            <textarea 
-              readOnly={!isEditMode}
-              value={isEditMode ? editedText : formatDataAsText()}
-              onChange={(e) => isEditMode && setEditedText(e.target.value)}
-              style={{
-                flex: 1,
-                width: '100%',
-                minHeight: '400px',
-                padding: '20px',
-                fontFamily: 'monospace',
-                fontSize: '14px',
-                backgroundColor: isDarkTheme ? '#0a0a0a' : '#ffffff',
-                color: isDarkTheme ? '#ffffff' : '#000000',
-                border: 'none',
-                resize: 'vertical',
-                outline: 'none',
-                cursor: isEditMode ? 'text' : 'default',
-                lineHeight: '1.6'
-              }}
-            />
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+              <textarea 
+                readOnly={!isEditMode}
+                value={isEditMode ? editedText : formatDataAsText()}
+                onChange={(e) => isEditMode && setEditedText(e.target.value)}
+                style={{
+                  flex: 1,
+                  width: '100%',
+                  minHeight: '300px',
+                  padding: '20px',
+                  fontFamily: 'monospace',
+                  fontSize: '14px',
+                  backgroundColor: isDarkTheme ? '#0a0a0a' : '#ffffff',
+                  color: isDarkTheme ? '#ffffff' : '#000000',
+                  border: 'none',
+                  resize: 'vertical',
+                  outline: 'none',
+                  cursor: isEditMode ? 'text' : 'default',
+                  lineHeight: '1.6'
+                }}
+              />
+              
+              {/* Логи действий */}
+              <div style={{
+                borderTop: `1px solid ${isDarkTheme ? '#1a1a1a' : '#e5e5e5'}`,
+                padding: '12px 20px',
+                backgroundColor: isDarkTheme ? '#1a1a1a' : '#f5f5f7',
+                maxHeight: '200px',
+                overflowY: 'auto'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '8px'
+                }}>
+                  <div style={{
+                    color: isDarkTheme ? '#ffffff' : '#000000',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                  }}>
+                    История действий
+                  </div>
+                  {actionLogs.length > 5 && (
+                    <button
+                      onClick={() => setShowAllLogs(!showAllLogs)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: isDarkTheme ? '#968686' : '#666666',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        textDecoration: 'underline'
+                      }}
+                    >
+                      {showAllLogs ? 'Свернуть' : 'Показать все'}
+                    </button>
+                  )}
+                </div>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}>
+                  {(showAllLogs ? actionLogs : actionLogs.slice(0, 5)).map(log => (
+                    <div
+                      key={log.id}
+                      style={{
+                        fontSize: '11px',
+                        color: isDarkTheme ? '#968686' : '#666666',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: '8px'
+                      }}
+                    >
+                      <span>{log.message}</span>
+                      <span style={{ whiteSpace: 'nowrap', fontSize: '10px' }}>{log.time}</span>
+                    </div>
+                  ))}
+                  {actionLogs.length === 0 && (
+                    <div style={{
+                      fontSize: '11px',
+                      color: isDarkTheme ? '#968686' : '#666666',
+                      fontStyle: 'italic'
+                    }}>
+                      Нет действий
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
             {(isEditMode || formatDataAsText().length > 0) && (
               <div style={{ padding: '16px 20px', borderTop: isDarkTheme ? '1px solid #1a1a1a' : '1px solid #e5e5e5', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                 {isEditMode ? (
