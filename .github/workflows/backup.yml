@@ -1,0 +1,80 @@
+name: Supabase Backup
+
+on:
+  schedule:
+    # Каждые 6 часов (UTC)
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Ручной запуск
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write # Нужно для коммита бэкапов
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Create backups directory
+        run: mkdir -p backups
+      
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+      
+      - name: Backup database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          # Формируем имя файла с датой и временем
+          TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
+          BACKUP_FILE="backups/supabase_backup_${TIMESTAMP}.sql"
+          
+          # Выполняем pg_dump через URL (проще и надежнее)
+          pg_dump "$SUPABASE_DB_URL" \
+            --no-owner \
+            --no-acl \
+            --clean \
+            --if-exists \
+            --verbose \
+            -f "$BACKUP_FILE" 2>&1 | tee backup.log || true
+          
+          # Проверяем, что файл создан и не пустой
+          if [ ! -f "$BACKUP_FILE" ] || [ ! -s "$BACKUP_FILE" ]; then
+            echo "❌ Ошибка: бэкап не создан или пустой"
+            exit 1
+          fi
+          
+          # Сжимаем бэкап
+          gzip "$BACKUP_FILE"
+          
+          # Проверяем размер сжатого файла
+          BACKUP_SIZE=$(stat -f%z "${BACKUP_FILE}.gz" 2>/dev/null || stat -c%s "${BACKUP_FILE}.gz" 2>/dev/null || echo "0")
+          echo "✅ Бэкап создан: ${BACKUP_FILE}.gz (размер: ${BACKUP_SIZE} байт)"
+      
+      - name: Clean old backups (keep last 30)
+        run: |
+          cd backups
+          if [ -n "$(ls -A *.sql.gz 2>/dev/null)" ]; then
+            ls -t *.sql.gz | tail -n +31 | xargs -r rm -f || true
+            echo "🧹 Старые бэкапы удалены (оставлено последние 30)"
+          else
+            echo "ℹ️ Нет бэкапов для очистки"
+          fi
+      
+      - name: Commit and push backups
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add backups/
+          if git diff --staged --quiet; then
+            echo "ℹ️ Нет изменений для коммита"
+          else
+            git commit -m "Auto backup: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            git push
+            echo "✅ Бэкап закоммичен и отправлен"
+          fi
+
