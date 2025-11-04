@@ -39,64 +39,73 @@ jobs:
           echo "🔍 Проверка формата URL..."
           echo "URL (первые 50 символов): ${SUPABASE_DB_URL:0:50}..."
           
-          # Извлекаем компоненты из URL
-          # Формат для Connection Pooling: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:[PORT]/[DB]
-          # Формат для прямого: postgresql://postgres:[PASSWORD]@[HOST]:[PORT]/[DB]
-          DB_URL_NO_PROTOCOL="${SUPABASE_DB_URL#postgresql://}"
-          DB_USER_PASS="${DB_URL_NO_PROTOCOL%%@*}"
-          DB_HOST_PORT_DB="${DB_URL_NO_PROTOCOL#*@}"
+          # Пробуем использовать прямой URL-формат для pg_dump
+          # Это должно работать лучше для Connection Pooling
+          echo "🔄 Запуск pg_dump через URL..."
           
-          DB_USER="${DB_USER_PASS%%:*}"
-          DB_PASS="${DB_USER_PASS#*:}"
-          DB_HOST="${DB_HOST_PORT_DB%%:*}"
-          DB_PORT_DB="${DB_HOST_PORT_DB#*:}"
-          DB_PORT="${DB_PORT_DB%%/*}"
-          DB_NAME="${DB_PORT_DB#*/}"
-          
-          # Декодируем URL-encoded пароль
-          DB_PASS_DECODED=$(echo -n "$DB_PASS" | sed 's/%24/$/g' | sed 's/%40/@/g' | sed 's/%3A/:/g' | sed 's/%2F/\//g')
-          
-          echo "📋 Параметры подключения:"
-          echo "  Host: $DB_HOST"
-          echo "  Port: $DB_PORT"
-          echo "  User: $DB_USER"
-          echo "  Database: $DB_NAME"
-          echo "  Password length: ${#DB_PASS_DECODED}"
-          
-          # Проверяем формат пользователя для Connection Pooling
-          if [[ "$DB_USER" == postgres.* ]] && [[ "$DB_HOST" == *pooler* ]]; then
-            echo "✅ Формат Connection Pooling обнаружен"
-          elif [[ "$DB_HOST" == *pooler* ]]; then
-            echo "⚠️ ВНИМАНИЕ: Используется Connection Pooling, но формат пользователя может быть неправильным"
-            echo "   Ожидается: postgres.[PROJECT-REF]"
-            echo "   Получено: $DB_USER"
-          fi
-          
-          # Устанавливаем PGPASSWORD для автоматической аутентификации
-          export PGPASSWORD="$DB_PASS_DECODED"
-          
-          # Выполняем pg_dump
-          echo "🔄 Запуск pg_dump..."
-          pg_dump \
-            --host="$DB_HOST" \
-            --port="$DB_PORT" \
-            --username="$DB_USER" \
-            --dbname="$DB_NAME" \
+          # Используем прямой URL, pg_dump сам разберет его
+          pg_dump "$SUPABASE_DB_URL" \
             --no-owner \
             --no-acl \
             --clean \
             --if-exists \
             --verbose \
-            -f "$BACKUP_FILE" 2>&1 | tee backup.log || true
+            -f "$BACKUP_FILE" 2>&1 | tee backup.log || DUMP_ERROR=$?
           
-          # Очищаем пароль из окружения
-          unset PGPASSWORD
+          # Проверяем результат
+          if [ -n "$DUMP_ERROR" ] || [ ! -f "$BACKUP_FILE" ] || [ ! -s "$BACKUP_FILE" ]; then
+            echo "❌ Первая попытка не удалась, пробуем альтернативный способ..."
+            
+            # Извлекаем компоненты из URL для использования с PGPASSWORD
+            DB_URL_NO_PROTOCOL="${SUPABASE_DB_URL#postgresql://}"
+            DB_USER_PASS="${DB_URL_NO_PROTOCOL%%@*}"
+            DB_HOST_PORT_DB="${DB_URL_NO_PROTOCOL#*@}"
+            
+            DB_USER="${DB_USER_PASS%%:*}"
+            DB_PASS="${DB_USER_PASS#*:}"
+            DB_HOST="${DB_HOST_PORT_DB%%:*}"
+            DB_PORT_DB="${DB_HOST_PORT_DB#*:}"
+            DB_PORT="${DB_PORT_DB%%/*}"
+            DB_NAME="${DB_PORT_DB#*/}"
+            
+            # Декодируем URL-encoded пароль
+            DB_PASS_DECODED=$(echo -n "$DB_PASS" | sed 's/%24/$/g' | sed 's/%40/@/g' | sed 's/%3A/:/g' | sed 's/%2F/\//g')
+            
+            echo "📋 Параметры подключения:"
+            echo "  Host: $DB_HOST"
+            echo "  Port: $DB_PORT"
+            echo "  User: $DB_USER"
+            echo "  Database: $DB_NAME"
+            
+            # Устанавливаем PGPASSWORD
+            export PGPASSWORD="$DB_PASS_DECODED"
+            
+            # Пробуем подключиться с явными параметрами
+            pg_dump \
+              --host="$DB_HOST" \
+              --port="$DB_PORT" \
+              --username="$DB_USER" \
+              --dbname="$DB_NAME" \
+              --no-owner \
+              --no-acl \
+              --clean \
+              --if-exists \
+              --verbose \
+              -f "$BACKUP_FILE" 2>&1 | tee -a backup.log || true
+            
+            unset PGPASSWORD
+          fi
           
           # Проверяем, что файл создан и не пустой
           if [ ! -f "$BACKUP_FILE" ] || [ ! -s "$BACKUP_FILE" ]; then
             echo "❌ Ошибка: бэкап не создан или пустой"
             echo "📄 Последние строки лога:"
-            tail -20 backup.log || true
+            tail -30 backup.log || true
+            echo ""
+            echo "💡 Возможные причины:"
+            echo "   1. Неправильный пароль в SUPABASE_DB_URL"
+            echo "   2. Неправильный project-ref"
+            echo "   3. Connection Pooling не настроен или отключен"
             exit 1
           fi
           
