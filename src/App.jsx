@@ -26,6 +26,9 @@ function App({ user, supabase }) {
   const suppressNextBlurSaveRef = useRef(false)
   const inputRef = useRef(null)
   const isInitialLoadRef = useRef(true)
+  const dataLoadedRef = useRef(false)
+  const syncInProgressRef = useRef(false)
+  const lastSyncItemsRef = useRef(null)
 
   // Функция определения цвета по названию
   const getColorFromName = (name) => {
@@ -104,6 +107,8 @@ function App({ user, supabase }) {
         if (itemsData && itemsData.length > 0) {
           console.log('📋 Первые товары:', itemsData.slice(0, 3))
           setItems(itemsData)
+          lastSyncItemsRef.current = JSON.stringify(itemsData)
+          dataLoadedRef.current = true
         } else {
           console.warn('⚠️ База данных пуста или товары не найдены')
           // Пробуем загрузить из localStorage как резерв
@@ -114,12 +119,9 @@ function App({ user, supabase }) {
               console.log('💾 Загружаем из кэша:', cachedItems.length, 'товаров')
               if (cachedItems.length > 0) {
                 setItems(cachedItems)
+                lastSyncItemsRef.current = cached
                 // Показываем уведомление пользователю
                 alert(`Восстановлено ${cachedItems.length} товаров из кэша.\n\nДанные будут синхронизированы с базой через несколько секунд.`)
-                // Ускоряем синхронизацию - отключаем флаг начальной загрузки
-                setTimeout(() => {
-                  isInitialLoadRef.current = false
-                }, 500)
               }
             } catch (e) {
               console.error('Ошибка загрузки из кэша:', e)
@@ -128,6 +130,7 @@ function App({ user, supabase }) {
             console.warn('⚠️ Кэш тоже пуст. Проверьте localStorage:')
             console.log('localStorage keys:', Object.keys(localStorage))
           }
+          dataLoadedRef.current = true
         }
         
         // Загружаем пустые категории
@@ -160,10 +163,8 @@ function App({ user, supabase }) {
         }
         
         console.log('✅ Данные успешно загружены из PostgreSQL')
-        // Помечаем, что начальная загрузка завершена
-        setTimeout(() => {
-          isInitialLoadRef.current = false
-        }, 2000)
+        // Помечаем, что начальная загрузка завершена после фактической загрузки
+        isInitialLoadRef.current = false
       } catch (error) {
         console.error('❌ Критическая ошибка загрузки данных:', error)
         // Показываем пользователю ошибку
@@ -175,25 +176,59 @@ function App({ user, supabase }) {
     loadData()
   }, [supabase, user])
 
-  // Синхронизация данных с Supabase (PostgreSQL)
+  // Безопасная синхронизация данных с Supabase (PostgreSQL)
   useEffect(() => {
     // Не синхронизируем во время начальной загрузки
-    if (isInitialLoadRef.current) {
+    if (isInitialLoadRef.current || !dataLoadedRef.current) {
       console.log('⏸️ Пропуск синхронизации (начальная загрузка)')
       return
     }
     
-    if (!supabase || !user || items.length === 0) return
+    // Проверки перед синхронизацией
+    if (!supabase || !user) {
+      console.warn('⚠️ Нет supabase или user для синхронизации')
+      return
+    }
+    
+    if (!user.id) {
+      console.error('❌ Нет user.id для синхронизации')
+      return
+    }
+    
+    // Проверяем, изменились ли данные
+    const currentItemsStr = JSON.stringify(items)
+    if (currentItemsStr === lastSyncItemsRef.current) {
+      console.log('⏭️ Данные не изменились, пропуск синхронизации')
+      return
+    }
+    
+    // Защита от параллельных синхронизаций
+    if (syncInProgressRef.current) {
+      console.log('⏸️ Синхронизация уже выполняется, пропуск')
+      return
+    }
     
     const syncToSupabase = async () => {
+      syncInProgressRef.current = true
+      const backupItems = [...items] // Резервная копия на случай ошибки
+      
       try {
-        console.log('🔄 Синхронизация товаров с PostgreSQL...', items.length, 'шт.')
+        console.log('🔄 Начало безопасной синхронизации товаров...', items.length, 'шт.')
         
-        // Удаляем старые данные пользователя
-        const { error: deleteError } = await supabase.from('items').delete().eq('user_id', user.id)
-        if (deleteError) throw deleteError
+        // ШАГ 1: Получаем текущие данные из базы (для сравнения)
+        const { data: existingItems, error: fetchError } = await supabase
+          .from('items')
+          .select('id, name, category, quantity, color')
+          .eq('user_id', user.id)
         
-        // Сохраняем новые данные
+        if (fetchError) {
+          console.error('❌ Ошибка получения данных из базы:', fetchError)
+          throw fetchError
+        }
+        
+        console.log('📊 Товаров в базе:', existingItems?.length || 0)
+        
+        // ШАГ 2: Подготавливаем данные для синхронизации
         const itemsToSave = items.map(item => ({
           name: item.name,
           category: item.category,
@@ -202,50 +237,190 @@ function App({ user, supabase }) {
           user_id: user.id
         }))
         
-        const { error: insertError } = await supabase.from('items').insert(itemsToSave)
-        if (insertError) throw insertError
+        // ШАГ 3: Определяем, что нужно удалить (есть в базе, но нет локально)
+        const existingIds = new Set(existingItems?.map(i => i.id) || [])
+        const currentIds = new Set(items.map(i => i.id))
+        const idsToDelete = Array.from(existingIds).filter(id => !currentIds.has(id))
         
-        console.log('✅ Данные синхронизированы с PostgreSQL')
+        // ШАГ 4: Выполняем операции в правильном порядке
+        // Сначала удаляем ненужные (если есть)
+        if (idsToDelete.length > 0) {
+          console.log('🗑️ Удаление товаров:', idsToDelete.length, 'шт.')
+          const { error: deleteError } = await supabase
+            .from('items')
+            .delete()
+            .in('id', idsToDelete)
+            .eq('user_id', user.id)
+          
+          if (deleteError) {
+            console.error('❌ Ошибка удаления:', deleteError)
+            throw deleteError
+          }
+        }
+        
+        // ШАГ 5: Вставляем/обновляем данные
+        // Безопасный подход: сначала определяем, что нужно обновить, что вставить
+        if (itemsToSave.length > 0) {
+          console.log('💾 Сохранение товаров:', itemsToSave.length, 'шт.')
+          
+          // Создаем маппинг существующих товаров по name (для сравнения)
+          const existingItemsMap = new Map()
+          existingItems?.forEach(item => {
+            existingItemsMap.set(`${item.name}|${item.category}`, item)
+          })
+          
+          const itemsToInsert = []
+          const itemsToUpdate = []
+          
+          itemsToSave.forEach(newItem => {
+            const key = `${newItem.name}|${newItem.category}`
+            const existing = existingItemsMap.get(key)
+            
+            if (existing) {
+              // Проверяем, изменились ли данные
+              if (existing.quantity !== newItem.quantity || 
+                  existing.color !== newItem.color) {
+                itemsToUpdate.push({ ...newItem, id: existing.id })
+              }
+            } else {
+              itemsToInsert.push(newItem)
+            }
+          })
+          
+          // Обновляем существующие товары
+          if (itemsToUpdate.length > 0) {
+            console.log('🔄 Обновление товаров:', itemsToUpdate.length, 'шт.')
+            for (const item of itemsToUpdate) {
+              const { id, ...updateData } = item
+              const { error: updateError } = await supabase
+                .from('items')
+                .update(updateData)
+                .eq('id', id)
+                .eq('user_id', user.id)
+              
+              if (updateError) {
+                console.error('❌ Ошибка обновления товара:', updateError)
+                throw updateError
+              }
+            }
+          }
+          
+          // Вставляем новые товары
+          if (itemsToInsert.length > 0) {
+            console.log('➕ Вставка новых товаров:', itemsToInsert.length, 'шт.')
+            const { error: insertError } = await supabase
+              .from('items')
+              .insert(itemsToInsert)
+            
+            if (insertError) {
+              console.error('❌ Ошибка insert:', insertError)
+              throw insertError
+            }
+          }
+        }
+        
+        // ШАГ 6: Обновляем ссылку на последнюю синхронизацию
+        lastSyncItemsRef.current = currentItemsStr
+        console.log('✅ Данные успешно синхронизированы с PostgreSQL')
+        
       } catch (error) {
-        console.error('❌ Ошибка синхронизации с PostgreSQL:', error)
-        alert(`Ошибка сохранения: ${error.message}`)
+        console.error('❌ Критическая ошибка синхронизации с PostgreSQL:', error)
+        console.error('📋 Детали ошибки:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        })
+        
+        // Восстанавливаем данные из резервной копии
+        console.log('🔄 Восстановление данных из резервной копии...')
+        setItems(backupItems)
+        
+        // Показываем пользователю ошибку
+        alert(`Ошибка сохранения: ${error.message}\n\nДанные восстановлены из памяти. Проверьте интернет-соединение.`)
+      } finally {
+        syncInProgressRef.current = false
       }
     }
     
-    // Дебаунс - синхронизируем через 1 секунду после последнего изменения
-    const timeoutId = setTimeout(syncToSupabase, 1000)
+    // Дебаунс - синхронизируем через 1.5 секунды после последнего изменения
+    const timeoutId = setTimeout(syncToSupabase, 1500)
     return () => clearTimeout(timeoutId)
   }, [items, supabase, user])
   
+  // Безопасная синхронизация категорий
   useEffect(() => {
     // Не синхронизируем во время начальной загрузки
-    if (isInitialLoadRef.current) return
+    if (isInitialLoadRef.current || !dataLoadedRef.current) return
     
-    if (!supabase || !user || emptyCategories.length === 0) return
+    if (!supabase || !user || !user.id) return
+    
+    // Если категорий нет, удаляем их из базы
+    if (emptyCategories.length === 0) {
+      const syncEmpty = async () => {
+        try {
+          const { error } = await supabase
+            .from('empty_categories')
+            .delete()
+            .eq('user_id', user.id)
+          if (error) console.error('Ошибка удаления пустых категорий:', error)
+        } catch (error) {
+          console.error('Ошибка синхронизации пустых категорий:', error)
+        }
+      }
+      syncEmpty()
+      return
+    }
     
     const syncToSupabase = async () => {
       try {
-        console.log('🔄 Синхронизация категорий с PostgreSQL...', emptyCategories.length, 'шт.')
+        console.log('🔄 Безопасная синхронизация категорий...', emptyCategories.length, 'шт.')
         
-        const { error: deleteError } = await supabase.from('empty_categories').delete().eq('user_id', user.id)
-        if (deleteError) throw deleteError
+        // Получаем текущие категории
+        const { data: existingCategories, error: fetchError } = await supabase
+          .from('empty_categories')
+          .select('id, name')
+          .eq('user_id', user.id)
         
-        const categoriesToSave = emptyCategories.map(name => ({
-          name,
-          user_id: user.id
-        }))
+        if (fetchError) throw fetchError
         
-        const { error: insertError } = await supabase.from('empty_categories').insert(categoriesToSave)
-        if (insertError) throw insertError
+        // Определяем, что нужно удалить
+        const existingNames = new Set(existingCategories?.map(c => c.name) || [])
+        const currentNames = new Set(emptyCategories)
+        const namesToDelete = Array.from(existingNames).filter(name => !currentNames.has(name))
+        
+        // Удаляем ненужные
+        if (namesToDelete.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('empty_categories')
+            .delete()
+            .eq('user_id', user.id)
+            .in('name', namesToDelete)
+          if (deleteError) throw deleteError
+        }
+        
+        // Вставляем новые категории
+        const namesToInsert = Array.from(currentNames).filter(name => !existingNames.has(name))
+        if (namesToInsert.length > 0) {
+          const categoriesToSave = namesToInsert.map(name => ({
+            name,
+            user_id: user.id
+          }))
+          
+          const { error: insertError } = await supabase
+            .from('empty_categories')
+            .insert(categoriesToSave)
+          if (insertError) throw insertError
+        }
         
         console.log('✅ Категории синхронизированы с PostgreSQL')
       } catch (error) {
         console.error('❌ Ошибка синхронизации категорий:', error)
-        alert(`Ошибка сохранения категорий: ${error.message}`)
+        // Не показываем alert для категорий, только логируем
       }
     }
     
-    const timeoutId = setTimeout(syncToSupabase, 1000)
+    const timeoutId = setTimeout(syncToSupabase, 1500)
     return () => clearTimeout(timeoutId)
   }, [emptyCategories, supabase, user])
 
