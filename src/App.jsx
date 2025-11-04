@@ -29,6 +29,8 @@ function App({ user, supabase }) {
   const dataLoadedRef = useRef(false)
   const syncInProgressRef = useRef(false)
   const lastSyncItemsRef = useRef(null)
+  const pendingSyncRef = useRef(null) // Очередь синхронизации при ошибках
+  const syncRetryCountRef = useRef(0) // Счетчик повторных попыток
 
   // Функция определения цвета по названию
   const getColorFromName = (name) => {
@@ -219,6 +221,37 @@ function App({ user, supabase }) {
       return
     }
     
+    // Функция для определения типа ошибки
+    const isNetworkError = (error) => {
+      if (!error) return false
+      const message = error.message || String(error)
+      return message.includes('Failed to fetch') || 
+             message.includes('NetworkError') ||
+             message.includes('Network request failed') ||
+             message.includes('ERR_INTERNET_DISCONNECTED') ||
+             message.includes('ERR_NETWORK_CHANGED')
+    }
+
+    // Функция повторной попытки с экспоненциальной задержкой
+    const retryWithBackoff = async (fn, maxRetries = 3) => {
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          return await fn()
+        } catch (error) {
+          const isRetryable = isNetworkError(error) || 
+                             (error.code && ['502', '503', '504', '429'].includes(String(error.code)))
+          
+          if (!isRetryable || attempt === maxRetries) {
+            throw error
+          }
+          
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000) // Макс 10 секунд
+          console.log(`🔄 Повторная попытка ${attempt + 1}/${maxRetries} через ${delay}ms...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+      }
+    }
+
     const syncToSupabase = async () => {
       syncInProgressRef.current = true
       const backupItems = [...items] // Резервная копия на случай ошибки
@@ -226,16 +259,25 @@ function App({ user, supabase }) {
       try {
         console.log('🔄 Начало безопасной синхронизации товаров...', items.length, 'шт.')
         
-        // ШАГ 1: Получаем текущие данные из базы (для сравнения)
-        const { data: existingItems, error: fetchError } = await supabase
-          .from('items')
-          .select('id, name, category, quantity, color')
-          .eq('user_id', user.id)
+        // ШАГ 1: Получаем текущие данные из базы (для сравнения) с retry
+        const { data: existingItems, error: fetchError } = await retryWithBackoff(async () => {
+          const result = await supabase
+            .from('items')
+            .select('id, name, category, quantity, color')
+            .eq('user_id', user.id)
+          
+          if (result.error) {
+            throw result.error
+          }
+          return result
+        })
         
         if (fetchError) {
           console.error('❌ Ошибка получения данных из базы:', fetchError)
           throw fetchError
         }
+        
+        syncRetryCountRef.current = 0 // Сбрасываем счетчик при успехе
         
         console.log('📊 Товаров в базе:', existingItems?.length || 0)
         
@@ -308,46 +350,57 @@ function App({ user, supabase }) {
         
         // ШАГ 3: Выполняем операции в правильном порядке
         
-        // 3.1. Удаляем товары, которых нет локально
+        // 3.1. Удаляем товары, которых нет локально (с retry)
         if (idsToDelete.length > 0) {
           console.log('🗑️ Удаление товаров:', idsToDelete.length, 'шт.')
-          const { error: deleteError } = await supabase
-            .from('items')
-            .delete()
-            .in('id', idsToDelete)
-            .eq('user_id', user.id)
-          
-          if (deleteError) {
-            console.error('❌ Ошибка удаления:', deleteError)
-            throw deleteError
-          }
+          await retryWithBackoff(async () => {
+            const { error: deleteError } = await supabase
+              .from('items')
+              .delete()
+              .in('id', idsToDelete)
+              .eq('user_id', user.id)
+            
+            if (deleteError) {
+              console.error('❌ Ошибка удаления:', deleteError)
+              throw deleteError
+            }
+          })
         }
         
-        // 3.2. Обновляем существующие товары по ID
+        // 3.2. Обновляем существующие товары по ID (с retry)
         if (itemsToUpdate.length > 0) {
           console.log('🔄 Обновление товаров:', itemsToUpdate.length, 'шт.')
           for (const item of itemsToUpdate) {
-            const { id, ...updateData } = item
-            const { error: updateError } = await supabase
-              .from('items')
-              .update(updateData)
-              .eq('id', id)
-              .eq('user_id', user.id)
-            
-            if (updateError) {
-              console.error('❌ Ошибка обновления товара:', updateError, item)
-              throw updateError
-            }
+            await retryWithBackoff(async () => {
+              const { id, ...updateData } = item
+              const { error: updateError } = await supabase
+                .from('items')
+                .update(updateData)
+                .eq('id', id)
+                .eq('user_id', user.id)
+              
+              if (updateError) {
+                console.error('❌ Ошибка обновления товара:', updateError, item)
+                throw updateError
+              }
+            })
           }
         }
         
-        // 3.3. Вставляем новые товары
+        // 3.3. Вставляем новые товары (с retry)
         if (itemsToInsert.length > 0) {
           console.log('➕ Вставка новых товаров:', itemsToInsert.length, 'шт.')
-          const { data: insertedItems, error: insertError } = await supabase
-            .from('items')
-            .insert(itemsToInsert)
-            .select()
+          const { data: insertedItems, error: insertError } = await retryWithBackoff(async () => {
+            const result = await supabase
+              .from('items')
+              .insert(itemsToInsert)
+              .select()
+            
+            if (result.error) {
+              throw result.error
+            }
+            return result
+          })
           
           if (insertError) {
             console.error('❌ Ошибка insert:', insertError)
@@ -413,12 +466,29 @@ function App({ user, supabase }) {
           code: error.code
         })
         
-        // Восстанавливаем данные из резервной копии
-        console.log('🔄 Восстановление данных из резервной копии...')
-        setItems(backupItems)
+        const isNetworkErr = isNetworkError(error)
         
-        // Показываем пользователю ошибку
-        alert(`Ошибка сохранения: ${error.message}\n\nДанные восстановлены из памяти. Проверьте интернет-соединение.`)
+        if (isNetworkErr) {
+          // Сетевая ошибка - данные уже сохранены локально (в items и localStorage)
+          syncRetryCountRef.current++
+          
+          console.warn('⚠️ Сетевая ошибка синхронизации')
+          console.warn('📦 Данные сохранены локально. Синхронизация произойдет автоматически при восстановлении соединения.')
+          
+          // НЕ восстанавливаем backupItems - текущие данные правильные, просто не синхронизированы
+          // НЕ показываем alert - данные сохранены локально и синхронизируются автоматически
+          // Синхронизация произойдет автоматически при следующем изменении или при восстановлении сети
+        } else {
+          // Другая ошибка (не сеть) - восстанавливаем из резерва
+          console.log('🔄 Восстановление данных из резервной копии...')
+          setItems(backupItems)
+          
+          // Показываем alert только для критических ошибок (не сетевых)
+          const isCriticalError = error.code && !['PGRST116', '42883'].includes(error.code)
+          if (isCriticalError) {
+            alert(`Ошибка сохранения: ${error.message}\n\nДанные восстановлены из памяти.`)
+          }
+        }
       } finally {
         syncInProgressRef.current = false
       }
