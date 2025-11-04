@@ -503,6 +503,9 @@ function App({ user, supabase }) {
           })
         }, 200)
         
+        // Успешная синхронизация
+        console.log('%c✅ Успешная синхронизация с Supabase', 'color: #00ff00; font-weight: bold')
+        
       } catch (error) {
         const isNetworkErr = isNetworkError(error)
         
@@ -585,6 +588,10 @@ function App({ user, supabase }) {
             .insert(categoriesToSave)
           if (insertError) throw insertError
         }
+        
+        // Успешная синхронизация категорий
+        console.log('%c✅ Успешная синхронизация категорий с Supabase', 'color: #00ff00; font-weight: bold')
+        
       } catch (error) {
         // Тихая ошибка для категорий
       }
