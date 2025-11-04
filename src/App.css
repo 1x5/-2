@@ -9,7 +9,6 @@
   overflow-x: hidden;
 }
 
-/* Убираем отступы по краям в мобильной версии */
 @media (max-width: 430px) {
   .search-container {
     padding-left: 0;
@@ -42,12 +41,6 @@
   margin-bottom: 20px;
 }
 
-@media (max-width: 430px) {
-  .search-container {
-    padding-left: 0;
-    padding-right: 0;
-  }
-}
 
 .search-box {
   flex: 1;
@@ -110,12 +103,6 @@
   overflow-x: auto;
 }
 
-@media (max-width: 430px) {
-  .category-tabs {
-    padding-left: 0;
-    padding-right: 0;
-  }
-}
 
 .category-tabs::-webkit-scrollbar {
   display: none;
@@ -154,12 +141,6 @@
   overflow: visible;
 }
 
-@media (max-width: 430px) {
-  .items-list {
-    padding-left: 0;
-    padding-right: 0;
-  }
-}
 
 .item-card-wrapper {
   position: relative;
