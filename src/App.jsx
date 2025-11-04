@@ -112,10 +112,21 @@ function App({ user, supabase }) {
             try {
               const cachedItems = JSON.parse(cached)
               console.log('💾 Загружаем из кэша:', cachedItems.length, 'товаров')
-              setItems(cachedItems)
+              if (cachedItems.length > 0) {
+                setItems(cachedItems)
+                // Показываем уведомление пользователю
+                alert(`Восстановлено ${cachedItems.length} товаров из кэша.\n\nДанные будут синхронизированы с базой через несколько секунд.`)
+                // Ускоряем синхронизацию - отключаем флаг начальной загрузки
+                setTimeout(() => {
+                  isInitialLoadRef.current = false
+                }, 500)
+              }
             } catch (e) {
               console.error('Ошибка загрузки из кэша:', e)
             }
+          } else {
+            console.warn('⚠️ Кэш тоже пуст. Проверьте localStorage:')
+            console.log('localStorage keys:', Object.keys(localStorage))
           }
         }
         
@@ -130,8 +141,22 @@ function App({ user, supabase }) {
         }
         
         console.log('📁 Загружено категорий:', categoriesData?.length || 0)
-        if (categoriesData) {
+        if (categoriesData && categoriesData.length > 0) {
           setEmptyCategories(categoriesData.map(c => c.name))
+        } else {
+          // Пробуем загрузить категории из кэша
+          const cachedCategories = localStorage.getItem('sumki-empty-categories')
+          if (cachedCategories) {
+            try {
+              const categories = JSON.parse(cachedCategories)
+              console.log('💾 Загружаем категории из кэша:', categories.length, 'шт.')
+              if (categories.length > 0) {
+                setEmptyCategories(categories)
+              }
+            } catch (e) {
+              console.error('Ошибка загрузки категорий из кэша:', e)
+            }
+          }
         }
         
         console.log('✅ Данные успешно загружены из PostgreSQL')
