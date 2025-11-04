@@ -68,8 +68,6 @@ jobs:
           fi
       
       - name: Commit and push backups
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
@@ -77,9 +75,8 @@ jobs:
           if git diff --staged --quiet; then
             echo "ℹ️ Нет изменений для коммита"
           else
-            git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git
             git commit -m "Auto backup: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-            git push origin HEAD:main
+            git push
             echo "✅ Бэкап закоммичен и отправлен"
           fi
 
