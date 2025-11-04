@@ -41,34 +41,48 @@ jobs:
           
           # Извлекаем компоненты из URL правильно
           # Формат: postgresql://user:pass@host:port/db
-          DB_URL_NO_PROTOCOL="${SUPABASE_DB_URL#postgresql://}"
-          DB_USER_PASS="${DB_URL_NO_PROTOCOL%%@*}"
-          DB_HOST_PORT_DB="${DB_URL_NO_PROTOCOL#*@}"
+          # Используем Python для надежного парсинга URL (всегда доступен в GitHub Actions)
+          echo "🔍 Парсинг URL через Python..."
           
-          DB_USER="${DB_USER_PASS%%:*}"
-          DB_PASS="${DB_USER_PASS#*:}"
-          
-          # Правильно извлекаем порт и хост (порт идет после последнего двоеточия перед слэшем)
-          # Используем Python для надежного парсинга URL
           PYTHON_PARSE=$(python3 << 'EOF'
 import sys
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 url = sys.argv[1]
 parsed = urlparse(url)
-print(f"{parsed.hostname}")
-print(f"{parsed.port}")
-print(f"{parsed.path.lstrip('/')}")
+
+# Извлекаем компоненты
+username = parsed.username or ""
+password = parsed.password or ""
+hostname = parsed.hostname or ""
+port = parsed.port or ""
+path = parsed.path.lstrip('/') or "postgres"
+
+print(f"USER:{username}")
+print(f"PASS:{password}")
+print(f"HOST:{hostname}")
+print(f"PORT:{port}")
+print(f"DB:{path}")
 EOF
-"$SUPABASE_DB_URL" 2>/dev/null || echo "")
+"$SUPABASE_DB_URL" 2>/dev/null)
           
           if [ -n "$PYTHON_PARSE" ]; then
-            DB_HOST=$(echo "$PYTHON_PARSE" | sed -n '1p')
-            DB_PORT=$(echo "$PYTHON_PARSE" | sed -n '2p')
-            DB_NAME=$(echo "$PYTHON_PARSE" | sed -n '3p')
+            DB_USER=$(echo "$PYTHON_PARSE" | grep "^USER:" | cut -d: -f2-)
+            DB_PASS=$(echo "$PYTHON_PARSE" | grep "^PASS:" | cut -d: -f2-)
+            DB_HOST=$(echo "$PYTHON_PARSE" | grep "^HOST:" | cut -d: -f2-)
+            DB_PORT=$(echo "$PYTHON_PARSE" | grep "^PORT:" | cut -d: -f2-)
+            DB_NAME=$(echo "$PYTHON_PARSE" | grep "^DB:" | cut -d: -f2-)
           else
-            # Fallback: простой парсинг (может не работать для всех случаев)
-            # Находим последнее двоеточие перед слэшем
+            echo "⚠️ Python парсинг не сработал, используем fallback..."
+            # Fallback: простой парсинг
+            DB_URL_NO_PROTOCOL="${SUPABASE_DB_URL#postgresql://}"
+            DB_USER_PASS="${DB_URL_NO_PROTOCOL%%@*}"
+            DB_HOST_PORT_DB="${DB_URL_NO_PROTOCOL#*@}"
+            
+            DB_USER="${DB_USER_PASS%%:*}"
+            DB_PASS="${DB_USER_PASS#*:}"
+            
+            # Находим последнее двоеточие перед слэшем (это порт)
             DB_HOST_PORT_DB_NO_SLASH="${DB_HOST_PORT_DB%%/*}"
             DB_PORT="${DB_HOST_PORT_DB_NO_SLASH##*:}"
             DB_HOST="${DB_HOST_PORT_DB_NO_SLASH%:*}"
