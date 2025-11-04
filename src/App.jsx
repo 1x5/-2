@@ -106,8 +106,14 @@ function App({ user, supabase }) {
         console.log('📦 Загружено товаров:', itemsData?.length || 0)
         if (itemsData && itemsData.length > 0) {
           console.log('📋 Первые товары:', itemsData.slice(0, 3))
-          setItems(itemsData)
-          lastSyncItemsRef.current = JSON.stringify(itemsData)
+          // Сохраняем ID из БД как dbId для отслеживания
+          const itemsWithDbId = itemsData.map(item => ({
+            ...item,
+            dbId: item.id, // ID из базы данных
+            id: item.id // Сохраняем id для совместимости
+          }))
+          setItems(itemsWithDbId)
+          lastSyncItemsRef.current = JSON.stringify(itemsWithDbId)
           dataLoadedRef.current = true
         } else {
           console.warn('⚠️ База данных пуста или товары не найдены')
@@ -118,10 +124,15 @@ function App({ user, supabase }) {
               const cachedItems = JSON.parse(cached)
               console.log('💾 Загружаем из кэша:', cachedItems.length, 'товаров')
               if (cachedItems.length > 0) {
-                setItems(cachedItems)
-                lastSyncItemsRef.current = cached
+                // Восстанавливаем с сохранением dbId если есть
+                const restoredItems = cachedItems.map(item => ({
+                  ...item,
+                  dbId: item.dbId || item.id // Сохраняем dbId если был
+                }))
+                setItems(restoredItems)
+                lastSyncItemsRef.current = JSON.stringify(restoredItems)
                 // Показываем уведомление пользователю
-                alert(`Восстановлено ${cachedItems.length} товаров из кэша.\n\nДанные будут синхронизированы с базой через несколько секунд.`)
+                alert(`Восстановлено ${restoredItems.length} товаров из кэша.\n\nДанные будут синхронизированы с базой через несколько секунд.`)
               }
             } catch (e) {
               console.error('Ошибка загрузки из кэша:', e)
@@ -228,22 +239,76 @@ function App({ user, supabase }) {
         
         console.log('📊 Товаров в базе:', existingItems?.length || 0)
         
-        // ШАГ 2: Подготавливаем данные для синхронизации
-        const itemsToSave = items.map(item => ({
-          name: item.name,
-          category: item.category,
-          quantity: item.quantity,
-          color: item.color,
-          user_id: user.id
-        }))
+        // ШАГ 2: Определяем операции по ID (лучшая практика - использовать ID из БД)
+        // Создаем маппинг существующих товаров по ID из БД
+        const existingItemsMap = new Map()
+        existingItems?.forEach(item => {
+          existingItemsMap.set(item.id, item)
+        })
         
-        // ШАГ 3: Определяем, что нужно удалить (есть в базе, но нет локально)
-        const existingIds = new Set(existingItems?.map(i => i.id) || [])
-        const currentIds = new Set(items.map(i => i.id))
-        const idsToDelete = Array.from(existingIds).filter(id => !currentIds.has(id))
+        // Определяем операции на основе ID
+        const itemsToInsert = []
+        const itemsToUpdate = []
+        const idsToDelete = []
         
-        // ШАГ 4: Выполняем операции в правильном порядке
-        // Сначала удаляем ненужные (если есть)
+        // Проверяем каждый локальный товар
+        items.forEach(localItem => {
+          // Определяем dbId: если есть dbId - используем его, иначе проверяем id
+          const dbId = localItem.dbId || (localItem.id > 0 ? localItem.id : null)
+          
+          // Если id отрицательный ИЛИ dbId отсутствует ИЛИ товар не найден в базе - это новый товар
+          const isNewItem = localItem.id < 0 || !dbId || !existingItemsMap.has(dbId)
+          
+          if (isNewItem) {
+            // Новый товар (отрицательный ID или нет dbId)
+            itemsToInsert.push({
+              name: localItem.name,
+              category: localItem.category,
+              quantity: localItem.quantity,
+              color: localItem.color,
+              user_id: user.id
+            })
+          } else if (dbId && existingItemsMap.has(dbId)) {
+            // Существующий товар - проверяем изменения
+            const existingItem = existingItemsMap.get(dbId)
+            
+            // Проверяем, изменились ли данные
+            if (existingItem.name !== localItem.name ||
+                existingItem.category !== localItem.category ||
+                existingItem.quantity !== localItem.quantity ||
+                existingItem.color !== localItem.color) {
+              // Товар изменился - нужно обновить
+              itemsToUpdate.push({
+                id: dbId,
+                name: localItem.name,
+                category: localItem.category,
+                quantity: localItem.quantity,
+                color: localItem.color
+              })
+            }
+          }
+        })
+        
+        // Определяем товары для удаления (есть в базе, но нет локально)
+        // Учитываем только товары с положительным dbId (из БД)
+        const localDbIds = new Set(
+          items
+            .map(item => {
+              const dbId = item.dbId || (item.id > 0 ? item.id : null)
+              return dbId && dbId > 0 ? dbId : null
+            })
+            .filter(id => id !== null && existingItemsMap.has(id))
+        )
+        
+        existingItems?.forEach(dbItem => {
+          if (!localDbIds.has(dbItem.id)) {
+            idsToDelete.push(dbItem.id)
+          }
+        })
+        
+        // ШАГ 3: Выполняем операции в правильном порядке
+        
+        // 3.1. Удаляем товары, которых нет локально
         if (idsToDelete.length > 0) {
           console.log('🗑️ Удаление товаров:', idsToDelete.length, 'шт.')
           const { error: deleteError } = await supabase
@@ -258,69 +323,81 @@ function App({ user, supabase }) {
           }
         }
         
-        // ШАГ 5: Вставляем/обновляем данные
-        // Безопасный подход: сначала определяем, что нужно обновить, что вставить
-        if (itemsToSave.length > 0) {
-          console.log('💾 Сохранение товаров:', itemsToSave.length, 'шт.')
-          
-          // Создаем маппинг существующих товаров по name (для сравнения)
-          const existingItemsMap = new Map()
-          existingItems?.forEach(item => {
-            existingItemsMap.set(`${item.name}|${item.category}`, item)
-          })
-          
-          const itemsToInsert = []
-          const itemsToUpdate = []
-          
-          itemsToSave.forEach(newItem => {
-            const key = `${newItem.name}|${newItem.category}`
-            const existing = existingItemsMap.get(key)
-            
-            if (existing) {
-              // Проверяем, изменились ли данные
-              if (existing.quantity !== newItem.quantity || 
-                  existing.color !== newItem.color) {
-                itemsToUpdate.push({ ...newItem, id: existing.id })
-              }
-            } else {
-              itemsToInsert.push(newItem)
-            }
-          })
-          
-          // Обновляем существующие товары
-          if (itemsToUpdate.length > 0) {
-            console.log('🔄 Обновление товаров:', itemsToUpdate.length, 'шт.')
-            for (const item of itemsToUpdate) {
-              const { id, ...updateData } = item
-              const { error: updateError } = await supabase
-                .from('items')
-                .update(updateData)
-                .eq('id', id)
-                .eq('user_id', user.id)
-              
-              if (updateError) {
-                console.error('❌ Ошибка обновления товара:', updateError)
-                throw updateError
-              }
-            }
-          }
-          
-          // Вставляем новые товары
-          if (itemsToInsert.length > 0) {
-            console.log('➕ Вставка новых товаров:', itemsToInsert.length, 'шт.')
-            const { error: insertError } = await supabase
+        // 3.2. Обновляем существующие товары по ID
+        if (itemsToUpdate.length > 0) {
+          console.log('🔄 Обновление товаров:', itemsToUpdate.length, 'шт.')
+          for (const item of itemsToUpdate) {
+            const { id, ...updateData } = item
+            const { error: updateError } = await supabase
               .from('items')
-              .insert(itemsToInsert)
+              .update(updateData)
+              .eq('id', id)
+              .eq('user_id', user.id)
             
-            if (insertError) {
-              console.error('❌ Ошибка insert:', insertError)
-              throw insertError
+            if (updateError) {
+              console.error('❌ Ошибка обновления товара:', updateError, item)
+              throw updateError
             }
           }
         }
         
-        // ШАГ 6: Обновляем ссылку на последнюю синхронизацию
-        lastSyncItemsRef.current = currentItemsStr
+        // 3.3. Вставляем новые товары
+        if (itemsToInsert.length > 0) {
+          console.log('➕ Вставка новых товаров:', itemsToInsert.length, 'шт.')
+          const { data: insertedItems, error: insertError } = await supabase
+            .from('items')
+            .insert(itemsToInsert)
+            .select()
+          
+          if (insertError) {
+            console.error('❌ Ошибка insert:', insertError)
+            throw insertError
+          }
+          
+          // Обновляем локальные товары с ID из базы (сопоставляем по порядку)
+          if (insertedItems && insertedItems.length > 0) {
+            console.log('✅ Получены ID новых товаров из БД:', insertedItems.map(i => i.id))
+            
+            // Создаем маппинг отрицательных ID к новым ID из БД
+            const negativeIdToDbId = new Map()
+            let insertIndex = 0
+            
+            items.forEach(localItem => {
+              // Если это новый товар (отрицательный ID или нет dbId)
+              if ((localItem.id < 0 || !localItem.dbId) && insertIndex < insertedItems.length) {
+                const dbItem = insertedItems[insertIndex]
+                negativeIdToDbId.set(localItem.id, dbItem.id)
+                insertIndex++
+              }
+            })
+            
+            // Обновляем локальные товары с новыми ID из БД
+            if (negativeIdToDbId.size > 0) {
+              setItems(currentItems => {
+                return currentItems.map(item => {
+                  const newDbId = negativeIdToDbId.get(item.id)
+                  if (newDbId) {
+                    console.log(`🔄 Обновление ID товара: ${item.id} → ${newDbId}`)
+                    return {
+                      ...item,
+                      id: newDbId,
+                      dbId: newDbId
+                    }
+                  }
+                  return item
+                })
+              })
+            }
+          }
+        }
+        
+        // ШАГ 4: Обновляем ссылку на последнюю синхронизацию
+        // Обновляем после того, как все ID были обновлены
+        setTimeout(() => {
+          const updatedItemsStr = JSON.stringify(items)
+          lastSyncItemsRef.current = updatedItemsStr
+        }, 100)
+        
         console.log('✅ Данные успешно синхронизированы с PostgreSQL')
         
       } catch (error) {
@@ -548,7 +625,8 @@ function App({ user, supabase }) {
         if (itemName) {
           maxId++
           const newItem = {
-            id: maxId,
+            id: -maxId, // Отрицательный ID = новый товар
+            dbId: null, // Нет ID в БД
             name: itemName,
             category: currentCategory,
             quantity: quantity,
@@ -623,6 +701,7 @@ function App({ user, supabase }) {
       setDeletingId(id)
       // Удаляем сразу из состояния, анимация делается через CSS
       setTimeout(() => {
+        // Удаляем товар по id (работает и с отрицательными ID для новых товаров)
         setItems(items.filter(item => item.id !== id))
         setDeletingId(null)
         setSwipeOffset({})
@@ -672,8 +751,10 @@ function App({ user, supabase }) {
         }
       }
       
+      // КРИТИЧНО: Сохраняем dbId при редактировании существующего товара
       setItems(items.map(item => {
         if (item.id === id) {
+          const currentItem = item
           let newName = value
           let newCategory = item.category
           
@@ -706,8 +787,16 @@ function App({ user, supabase }) {
           }
           
           const newColor = getColorFromName(newName)
-          console.log('Final item:', { name: newName, category: newCategory })
-          return { ...item, name: newName, category: newCategory, color: newColor }
+          console.log('💾 Сохранение товара:', { id, dbId: currentItem.dbId, name: newName, category: newCategory })
+          
+          // КРИТИЧНО: Сохраняем dbId при обновлении (чтобы не создавался новый товар)
+          return { 
+            ...currentItem, 
+            name: newName, 
+            category: newCategory, 
+            color: newColor,
+            dbId: currentItem.dbId || currentItem.id // Сохраняем dbId если был, иначе используем id
+          }
         }
         return item
       }))
@@ -852,9 +941,11 @@ function App({ user, supabase }) {
     // Режим создания +#
     if (searchQuery.startsWith('+#')) {
       console.log('Adding item to category from +#:', category)
-      const newId = Math.max(...items.map(i => i.id), 0) + 1
+      const maxId = Math.max(...items.map(i => Math.abs(i.id)), 0)
+      const newId = -(maxId + 1) // Отрицательный ID = новый товар
       const newItem = {
         id: newId,
+        dbId: null, // Нет ID в БД - новый товар
         name: 'Новый товар',
         category: category,
         quantity: 0,
@@ -905,9 +996,12 @@ function App({ user, supabase }) {
       setNewItemCategory(categories[1]) // Первая категория после "Все"
     } else {
       // Создаем новый товар в активной категории
-      const newId = Math.max(...items.map(i => i.id), 0) + 1
+      // Используем отрицательный ID для новых товаров (до синхронизации с БД)
+      const maxId = Math.max(...items.map(i => Math.abs(i.id)), 0)
+      const newId = -(maxId + 1) // Отрицательный ID = новый товар
       const newItem = {
         id: newId,
+        dbId: null, // Нет ID в БД - новый товар
         name: 'Новый товар',
         category: activeCategory,
         quantity: 0,
@@ -921,9 +1015,11 @@ function App({ user, supabase }) {
 
   // Подтверждение добавления товара
   const handleConfirmAddItem = () => {
-    const newId = Math.max(...items.map(i => i.id), 0) + 1
+    const maxId = Math.max(...items.map(i => Math.abs(i.id)), 0)
+    const newId = -(maxId + 1) // Отрицательный ID = новый товар
     const newItem = {
       id: newId,
+      dbId: null, // Нет ID в БД - новый товар
       name: 'Новый товар',
       category: newItemCategory,
       quantity: 0,
