@@ -36,8 +36,12 @@ jobs:
           TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
           BACKUP_FILE="backups/supabase_backup_${TIMESTAMP}.sql"
           
-          # Извлекаем компоненты из URL для использования с PGPASSWORD
-          # Формат: postgresql://user:pass@host:port/db
+          echo "🔍 Проверка формата URL..."
+          echo "URL (первые 50 символов): ${SUPABASE_DB_URL:0:50}..."
+          
+          # Извлекаем компоненты из URL
+          # Формат для Connection Pooling: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@[HOST]:[PORT]/[DB]
+          # Формат для прямого: postgresql://postgres:[PASSWORD]@[HOST]:[PORT]/[DB]
           DB_URL_NO_PROTOCOL="${SUPABASE_DB_URL#postgresql://}"
           DB_USER_PASS="${DB_URL_NO_PROTOCOL%%@*}"
           DB_HOST_PORT_DB="${DB_URL_NO_PROTOCOL#*@}"
@@ -52,12 +56,27 @@ jobs:
           # Декодируем URL-encoded пароль
           DB_PASS_DECODED=$(echo -n "$DB_PASS" | sed 's/%24/$/g' | sed 's/%40/@/g' | sed 's/%3A/:/g' | sed 's/%2F/\//g')
           
-          echo "Подключение к: $DB_HOST:$DB_PORT (IPv4)"
+          echo "📋 Параметры подключения:"
+          echo "  Host: $DB_HOST"
+          echo "  Port: $DB_PORT"
+          echo "  User: $DB_USER"
+          echo "  Database: $DB_NAME"
+          echo "  Password length: ${#DB_PASS_DECODED}"
+          
+          # Проверяем формат пользователя для Connection Pooling
+          if [[ "$DB_USER" == postgres.* ]] && [[ "$DB_HOST" == *pooler* ]]; then
+            echo "✅ Формат Connection Pooling обнаружен"
+          elif [[ "$DB_HOST" == *pooler* ]]; then
+            echo "⚠️ ВНИМАНИЕ: Используется Connection Pooling, но формат пользователя может быть неправильным"
+            echo "   Ожидается: postgres.[PROJECT-REF]"
+            echo "   Получено: $DB_USER"
+          fi
           
           # Устанавливаем PGPASSWORD для автоматической аутентификации
           export PGPASSWORD="$DB_PASS_DECODED"
           
-          # Выполняем pg_dump с явными параметрами и форсируем IPv4
+          # Выполняем pg_dump
+          echo "🔄 Запуск pg_dump..."
           pg_dump \
             --host="$DB_HOST" \
             --port="$DB_PORT" \
@@ -76,6 +95,8 @@ jobs:
           # Проверяем, что файл создан и не пустой
           if [ ! -f "$BACKUP_FILE" ] || [ ! -s "$BACKUP_FILE" ]; then
             echo "❌ Ошибка: бэкап не создан или пустой"
+            echo "📄 Последние строки лога:"
+            tail -20 backup.log || true
             exit 1
           fi
           
