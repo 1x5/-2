@@ -25,8 +25,6 @@ function App({ user, supabase }) {
   })
   const [actionLogs, setActionLogs] = useState([]) // Начинаем с пустого массива, загрузим из Supabase
   const [showAllLogs, setShowAllLogs] = useState(false)
-  const [backups, setBackups] = useState([])
-  const [showAllBackups, setShowAllBackups] = useState(false)
   const suppressNextBlurSaveRef = useRef(false)
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -88,70 +86,6 @@ function App({ user, supabase }) {
         console.error('Критическая ошибка сохранения лога:', error)
         // Логи остаются в localStorage, что уже сделано выше
       }
-    }
-  }
-
-  // Функция загрузки списка бэкапов из GitHub
-  const loadBackups = async () => {
-    try {
-      const response = await fetch('https://api.github.com/repos/1x5/-2/contents/backups')
-      if (!response.ok) {
-        if (response.status === 404) {
-          // Папка backups еще не создана
-          setBackups([])
-          return
-        }
-        throw new Error(`HTTP ${response.status}`)
-      }
-      
-      const files = await response.json()
-      // Фильтруем только .sql.gz файлы и сортируем по дате (новые первыми)
-      const backupFiles = files
-        .filter(file => file.name.endsWith('.sql.gz'))
-        .map(file => {
-          // Извлекаем дату из имени файла: supabase_backup_YYYYMMDD_HHMMSS.sql.gz
-          const match = file.name.match(/supabase_backup_(\d{8})_(\d{6})/)
-          let date = null
-          if (match) {
-            const [, dateStr, timeStr] = match
-            const year = dateStr.substring(0, 4)
-            const month = dateStr.substring(4, 6)
-            const day = dateStr.substring(6, 8)
-            const hour = timeStr.substring(0, 2)
-            const minute = timeStr.substring(2, 4)
-            const second = timeStr.substring(4, 6)
-            date = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}Z`)
-          }
-          
-          return {
-            name: file.name,
-            downloadUrl: file.download_url,
-            size: file.size,
-            date: date || new Date(file.updated_at),
-            formattedDate: date ? date.toLocaleString('ru-RU', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
-            }) : new Date(file.updated_at).toLocaleString('ru-RU', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
-            })
-          }
-        })
-        .sort((a, b) => b.date - a.date)
-        .slice(0, 10) // Максимум 10 бэкапов
-      
-      setBackups(backupFiles)
-    } catch (error) {
-      console.error('Ошибка загрузки бэкапов:', error)
-      setBackups([])
     }
   }
 
@@ -1403,10 +1337,7 @@ function App({ user, supabase }) {
 
         <button 
           className="theme-toggle"
-          onClick={() => {
-            setShowTextViewModal(true)
-            loadBackups()
-          }}
+          onClick={() => setShowTextViewModal(true)}
           title="Просмотр в текстовом виде"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -1584,82 +1515,6 @@ function App({ user, supabase }) {
                       fontStyle: 'italic'
                     }}>
                       Нет действий
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              {/* Бэкапы */}
-              <div style={{
-                borderTop: `1px solid ${isDarkTheme ? '#1a1a1a' : '#e5e5e5'}`,
-                padding: '12px 20px',
-                backgroundColor: isDarkTheme ? '#1a1a1a' : '#f5f5f7',
-                maxHeight: '200px',
-                overflowY: 'auto'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '8px'
-                }}>
-                  <div style={{
-                    color: isDarkTheme ? '#ffffff' : '#000000',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                  }}>
-                    Резервные копии
-                  </div>
-                  {backups.length > 2 && (
-                    <button
-                      onClick={() => setShowAllBackups(!showAllBackups)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: isDarkTheme ? '#968686' : '#666666',
-                        fontSize: '11px',
-                        cursor: 'pointer',
-                        textDecoration: 'underline'
-                      }}
-                    >
-                      {showAllBackups ? 'Свернуть' : 'Показать все'}
-                    </button>
-                  )}
-                </div>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px'
-                }}>
-                  {(showAllBackups ? backups.slice(0, 10) : backups.slice(0, 2)).map((backup, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        fontSize: '11px',
-                        color: isDarkTheme ? '#968686' : '#666666',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: '8px',
-                        alignItems: 'center'
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        window.open(backup.downloadUrl, '_blank')
-                      }}
-                    >
-                      <span style={{ cursor: 'pointer', textDecoration: 'underline' }}>
-                        {backup.name.replace('supabase_backup_', '').replace('.sql.gz', '')}
-                      </span>
-                      <span style={{ whiteSpace: 'nowrap', fontSize: '10px' }}>{backup.formattedDate}</span>
-                    </div>
-                  ))}
-                  {backups.length === 0 && (
-                    <div style={{
-                      fontSize: '11px',
-                      color: isDarkTheme ? '#968686' : '#666666',
-                      fontStyle: 'italic'
-                    }}>
-                      Нет бэкапов
                     </div>
                   )}
                 </div>
